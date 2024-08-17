@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://vikkfjvfvdfv"]
+[gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
 
 [ext_resource type="Script" path="res://src/Game.cs" id="1_2ms8f"]
 [ext_resource type="Script" path="res://src/grid/Grid.cs" id="2_onci7"]
@@ -8,7 +8,6 @@
 [ext_resource type="Script" path="res://src/Player.cs" id="6_olp6x"]
 [ext_resource type="Script" path="res://src/Terrain.cs" id="7_ignms"]
 [ext_resource type="Texture2D" uid="uid://brrfc36wgotqo" path="res://assets/terrain/new_noise_texture_2d.tres" id="8_l2x7m"]
-[ext_resource type="RDShaderFile" uid="uid://t16cs5m252ve" path="res://assets/terrain/jumpflood.glsl" id="9_ejdu4"]
 [ext_resource type="Script" path="res://addons/easy_compute/EasyCompute.gd" id="10_fmlfi"]
 
 [sub_resource type="Environment" id="Environment_cw83p"]
@@ -51,7 +50,6 @@ _steeringRadius = 1.0
 script = ExtResource("7_ignms")
 _sprite = NodePath("Sprite3D")
 _noiseTex = ExtResource("8_l2x7m")
-_jumpFloodComputerShader = ExtResource("9_ejdu4")
 _easyComputeScript = ExtResource("10_fmlfi")
 
 [node name="Sprite3D" type="Sprite3D" parent="Terrain"]

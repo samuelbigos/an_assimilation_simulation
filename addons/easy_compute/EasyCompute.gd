@@ -1,14 +1,25 @@
 @icon("res://addons/easy_compute/icon.svg")
 class_name EasyCompute extends RefCounted
 
-
 signal compute_dispatched(shader_name: String)
 signal compute_synced()
-
 
 var rd: RenderingDevice = null
 var shader_cache: Dictionary = {}
 var data_cache: Dictionary = {}
+
+# swap textures
+var texture: Texture2DRD
+var next_texture: int = 0
+var texture_rds: Array[RID] = [RID(), RID()]
+
+func init_swap_textures(rid1 : RID, rid2 : RID):
+	texture_rds[0] = rid1
+	texture_rds[1] = rid2
+
+func update_swap_textures():
+	next_texture = (next_texture + 1) % 2
+	texture.texture_rd_rid = texture_rds[next_texture]
 
 
 func _notification(what):
@@ -102,18 +113,18 @@ func _precheck(uniform_name: String, should_contain: bool = false) -> bool:
 	return true
 
 ## Loads the given shader from file and creates a compute pipeline
-func load_shader(shader_name: String, file_path: String) -> bool:
+func load_shader(shader_name: String, file_path: String) -> RID:
 	if not _init_gpu():
 		# Check if rendering device is already initialized
-		return false
+		return RID()
 	elif shader_name in shader_cache:
 		# Check if shader with name is already registered
 		push_warning("Shader with name '%s' already registered" % [shader_name])
-		return false
+		return RID()
 	elif not ".glsl" in file_path:
 		# Check if file at path is a GLSL file
 		push_warning("File at path '%s' is not a GLSL file" % [file_path])
-		return false
+		return RID()
 
 	# Load shader from file
 	var shader_code = load(file_path)
@@ -131,7 +142,7 @@ func load_shader(shader_name: String, file_path: String) -> bool:
 		"uniform_set": RID(),
 	}
 
-	return true
+	return shader
 
 ## Unloads a shader along with its compute pipeline from the cache
 func unload_shader(shader_name: String) -> bool:
@@ -201,6 +212,21 @@ func register_uniform_buffer(buffer_name: String, binding: int, size: int = 0, d
 
 	return true
 
+func register_texture_rid(
+	texture_name: String, binding: int,
+	rid: RID,
+	format: int = RenderingDevice.DATA_FORMAT_R8G8B8A8_UNORM,
+	additional_usage_bits: int = 0,
+) -> RID:
+	if not _precheck(texture_name, false):
+		return RID()
+
+	print(rid.is_valid());
+	assert(rid.is_valid(), "Failed to create texture '%s'" % [texture_name])
+	_finish_register(texture_name, rid, binding, RenderingDevice.UNIFORM_TYPE_IMAGE);
+	
+	return rid;
+
 ## Registers a texture uniform under the given name
 func register_texture(
 	texture_name: String, binding: int,
@@ -208,9 +234,9 @@ func register_texture(
 	data: PackedByteArray = [],
 	format: int = RenderingDevice.DATA_FORMAT_R8G8B8A8_UNORM,
 	additional_usage_bits: int = 0,
-) -> bool:
+) -> RID:
 	if not _precheck(texture_name, false):
-		return false
+		return RID()
 
 	# Create texture format
 	var texture_format = RDTextureFormat.new()
@@ -233,7 +259,7 @@ func register_texture(
 	# Create uniform, cache it and invalidate uniform set
 	_finish_register(texture_name, rid, binding, RenderingDevice.UNIFORM_TYPE_IMAGE)
 
-	return true
+	return rid
 
 ## Registers a sampler uniform under the given name
 func register_sampler(

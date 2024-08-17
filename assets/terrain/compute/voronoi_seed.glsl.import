@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://t16cs5m252ve"
+path="res://.godot/imported/voronoi_seed.glsl-09291130acc8b08868ebbe38b5f39d9e.res"
+
+[deps]
+
+source_file="res://assets/terrain/compute/voronoi_seed.glsl"
+dest_files=["res://.godot/imported/voronoi_seed.glsl-09291130acc8b08868ebbe38b5f39d9e.res"]
+
+[params]
+
