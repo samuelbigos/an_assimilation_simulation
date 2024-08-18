@@ -1,13 +1,15 @@
 #[compute]
 #version 450
 
-layout(set = 0, binding = 0, rgba8) uniform image2D colorImage;
-layout(set = 0, binding = 1, std430) restrict readonly buffer Color {
-  float u_offset;
+layout(set = 0, binding = 0, rgba8) uniform image2D _input;
+layout(set = 1, binding = 0, rgba8) uniform image2D _output;
+
+layout(push_constant, std430) uniform Params {
+	float u_offset;
   float u_level;
   float u_max_steps;
-};
-layout(set = 0, binding = 2, rgba8) uniform image2D sampleImage;
+  float u_padding;
+} params;
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 void main() 
@@ -22,17 +24,17 @@ void main()
 	vec2 closest_pos = vec2(0.0, 0.0);
 	
 	// uses Jump Flood Algorithm to do a fast voronoi generation.
-	for(int x = -imageSize.x; x <= imageSize.y; x += imageSize.x)
+	for(int x = -1; x <= 1; x += 1)
 	{
-		for(int y = -imageSize.y; y <= imageSize.x; y += imageSize.y)
+		for(int y = -1; y <= 1; y += 1)
 		{
 			ivec2 voffset = uv;
-			voffset += ivec2(x * int(u_offset), y * int(u_offset));
+			voffset += ivec2(x * int(params.u_offset), y * int(params.u_offset));
 
-			vec2 pos = imageLoad(sampleImage, voffset).rg;
-      pos.x *= imageSize.x;
-      pos.y *= imageSize.y;
-			float dist = distance(pos.xy, uv.xy);
+			vec2 pos = imageLoad(_input, voffset).rg;
+      
+      vec2 uv01 = vec2(float(uv.x) / float(imageSize.x), float(uv.y) / float(imageSize.y));
+			float dist = distance(pos.xy, uv01.xy);
 			
 			if(pos.x != 0.0 && pos.y != 0.0 && dist < closest_dist)
 			{
@@ -42,6 +44,6 @@ void main()
 		}
 	}
   vec4 col = vec4(1.0, 1.0, 0.0, 1.0);
-  //col = vec4(closest_pos.x, closest_pos.y, 0.0, 1.0);
-	imageStore(colorImage, uv, col);
+  col = vec4(closest_pos.x, closest_pos.y, 0.0, 1.0);
+	imageStore(_output, uv, col);
 }

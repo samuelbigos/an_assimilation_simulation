@@ -1,82 +1,115 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 
 public partial class Terrain : Node
 {
-	[Export] private Sprite3D _sprite;
-	[Export] private NoiseTexture2D _noiseTex;
-	[Export] private Resource _easyComputeScript;
-
-	private Vector2I _workgroupSize = new Vector2I(32, 32);
-	private GDScript _gdScript;
-	private Vector2I _textureSize;
+	[Export] private MeshInstance3D _terrainMesh;
+	[Export] private Texture2D _noiseTex;
 	
-	private GodotObject _voronoiSeedCompute;
-	//private GodotObject _jumpFloodCompute;
-	//private GodotObject _distanceFieldCompute;
+	private Vector2I _workgroupSize = new Vector2I(32, 32);
+	private Vector2I _textureSize;
 
 	private Rid _voronoiSeedShader;
+	private Rid _jumpFloodShader;
+	private Rid _distanceFieldShader;
+	
+	private Rid _voronoiSeedPipeline;
+	private Rid _jumpFlooPipeline;
+	private Rid _distanceFieldPipeline;
 	
 	private bool _generatedVoronoiSeed;
 	private bool _generatedVoronoi;
+	private bool _generatedDistanceField;
 
-	private Texture2D _voronoiSeedTexture;
-	private Texture2D _voronoiTexture;
+	private Rid[] _swapTextures = new Rid[2];
+	private Dictionary<Rid, Rid[]> _swapSets = new Dictionary<Rid, Rid[]>();
+	private int _currentSwap;
 
-	private Rid[] _swapRds = new Rid[2];
-	private Rid[] _swapSets = new Rid[2];
+	private RenderingDevice _rd;
+	private RDTextureFormat _format;
+	private Texture2Drd _texture2Drd;
 	
 	public override void _Ready()
 	{
-		_textureSize = new Vector2I(_noiseTex.Width, _noiseTex.Height);
-		_gdScript = GD.Load<GDScript>(_easyComputeScript.ResourcePath);
+		_texture2Drd = new Texture2Drd();
+		_textureSize = new Vector2I((int) _noiseTex.GetSize().X, (int) _noiseTex.GetSize().Y);
 		
-		_voronoiSeedCompute = (GodotObject)_gdScript.New();
-		_voronoiSeedShader = _voronoiSeedCompute.Call("load_shader", "voronoi_seed", "res://assets/terrain/compute/voronoi_seed.glsl").AsRid();
+		_format = new RDTextureFormat();
+		_format.Format = RenderingDevice.DataFormat.R8G8B8A8Unorm;
+		_format.Width = (uint) _textureSize.X;
+		_format.Height = (uint) _textureSize.Y;
+		_format.UsageBits = RenderingDevice.TextureUsageBits.SamplingBit |
+		                    RenderingDevice.TextureUsageBits.ColorAttachmentBit |
+		                    RenderingDevice.TextureUsageBits.StorageBit |
+		                    RenderingDevice.TextureUsageBits.CanUpdateBit |
+		                    RenderingDevice.TextureUsageBits.CanCopyToBit;
 		
-		//_jumpFloodCompute = (GodotObject)_gdScript.New();
-		_voronoiSeedCompute.Call("load_shader", "jump_flood", "res://assets/terrain/compute/jump_flood.glsl");
+		_rd = RenderingServer.GetRenderingDevice();
+
+		{
+			RDShaderFile shaderFile = GD.Load<RDShaderFile>("res://assets/terrain/compute/voronoi_seed.glsl");
+			RDShaderSpirV shaderBytecode = shaderFile.GetSpirV();
+			_voronoiSeedShader = _rd.ShaderCreateFromSpirV(shaderBytecode);
+			_voronoiSeedPipeline = _rd.ComputePipelineCreate(_voronoiSeedShader);
+		}
 		
-		//_distanceFieldCompute = (GodotObject)_gdScript.New();
-		_voronoiSeedCompute.Call("load_shader", "distance_field", "res://assets/terrain/compute/distance_field.glsl");
+		{
+			RDShaderFile shaderFile = GD.Load<RDShaderFile>("res://assets/terrain/compute/jump_flood.glsl");
+			RDShaderSpirV shaderBytecode = shaderFile.GetSpirV();
+			_jumpFloodShader = _rd.ShaderCreateFromSpirV(shaderBytecode);
+			_jumpFlooPipeline = _rd.ComputePipelineCreate(_jumpFloodShader);
+		}
+		
+		{
+			RDShaderFile shaderFile = GD.Load<RDShaderFile>("res://assets/terrain/compute/distance_field.glsl");
+			RDShaderSpirV shaderBytecode = shaderFile.GetSpirV();
+			_distanceFieldShader = _rd.ShaderCreateFromSpirV(shaderBytecode);
+			_distanceFieldPipeline = _rd.ComputePipelineCreate(_distanceFieldShader);
+		}
+
+		CreateSwapTextures();
+		
+		ShaderMaterial material = _terrainMesh.GetActiveMaterial(0) as ShaderMaterial;
+		material?.SetShaderParameter("_sdf", _texture2Drd);
+		_terrainMesh.Scale = new Vector3(_textureSize.X, 1.0f, _textureSize.Y);
+	}
+
+	private void UpdateTerrainTexture(Texture2D tex)
+	{
+		
 	}
 
 	private void CreateSwapTextures()
 	{
-		RDTextureFormat textureFormat = new RDTextureFormat();
-		textureFormat.Format = RenderingDevice.DataFormat.R8G8B8A8Unorm;
-		textureFormat.Width = (uint) _textureSize.X;
-		textureFormat.Height = (uint) _textureSize.Y;
-		textureFormat.UsageBits = RenderingDevice.TextureUsageBits.SamplingBit |
-		                           RenderingDevice.TextureUsageBits.ColorAttachmentBit |
-		                           RenderingDevice.TextureUsageBits.StorageBit |
-		                           RenderingDevice.TextureUsageBits.CanUpdateBit |
-		                           RenderingDevice.TextureUsageBits.CanCopyToBit;
-
-		RenderingDevice rd = RenderingServer.GetRenderingDevice();
-		_swapRds[0] = rd.TextureCreate(textureFormat, new RDTextureView());
-		_swapRds[1] = rd.TextureCreate(textureFormat, new RDTextureView());
-		rd.TextureClear(_swapRds[0], Colors.Teal, 0, 1, 0, 1);
-		rd.TextureClear(_swapRds[1], Colors.Teal, 0, 1, 0, 1);
-		_swapSets[0] = CreateUniform(rd, _swapRds[0]);
-		_swapSets[1] = CreateUniform(rd, _swapRds[1]);
+		_swapTextures[0] = _rd.TextureCreate(_format, new RDTextureView());
+		_swapTextures[1] = _rd.TextureCreate(_format, new RDTextureView());
+		_rd.TextureClear(_swapTextures[0], Colors.Teal, 0, 1, 0, 1);
+		_rd.TextureClear(_swapTextures[1], Colors.Teal, 0, 1, 0, 1);
+		_swapSets[_voronoiSeedShader] = new Rid[2];
+		_swapSets[_voronoiSeedShader][0] = CreateUniform(_swapTextures[0], _voronoiSeedShader);
+		_swapSets[_voronoiSeedShader][1] = CreateUniform(_swapTextures[1], _voronoiSeedShader);
+		_swapSets[_jumpFloodShader] = new Rid[2];
+		_swapSets[_jumpFloodShader][0] = CreateUniform(_swapTextures[0], _jumpFloodShader);
+		_swapSets[_jumpFloodShader][1] = CreateUniform(_swapTextures[1], _jumpFloodShader);
+		_swapSets[_distanceFieldShader] = new Rid[2];
+		_swapSets[_distanceFieldShader][0] = CreateUniform(_swapTextures[0], _distanceFieldShader);
+		_swapSets[_distanceFieldShader][1] = CreateUniform(_swapTextures[1], _distanceFieldShader);
 	}
 
-	private Rid CreateUniform(RenderingDevice rd, Rid rid)
+	private Rid CreateUniform(Rid rid, Rid shader)
 	{
 		RDUniform uniform = new RDUniform();
 		uniform.UniformType = RenderingDevice.UniformType.Image;
 		uniform.Binding = 0;
 		uniform.AddId(rid);
-		return rd.UniformSetCreate([uniform], _voronoiSeedShader, 0);
+		Rid uniformRid = _rd.UniformSetCreate([uniform], shader, 0);
+		Utils.Assert(uniformRid.IsValid, "Failed to create uniform.");
+		return uniformRid;
 	}
 
 	private void GenerateVoronoiSeed()
 	{
-		Image image = Image.CreateEmpty(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8);
-		ImageTexture texture = ImageTexture.CreateFromImage(image);
-		_voronoiSeedCompute.Call("register_texture", "voronoi_seed_texture", 0, _textureSize.X, _textureSize.Y, image.GetData(), (int)RenderingDevice.DataFormat.R8G8B8A8Unorm).As<Rid>();
-		
 		Image noiseTexImage = _noiseTex.GetImage();
 		Image noiseImage = Image.CreateEmpty(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8);
 		for (int x = 0; x < _textureSize.X; x++) {
@@ -85,58 +118,85 @@ public partial class Terrain : Node
 				noiseImage.SetPixel(x, y, col);
 			}
 		}
+
+		Rid noiseTextureRid = _rd.TextureCreate(_format, new RDTextureView(), [noiseImage.GetData()]);
+		Rid noiseUniformRid = CreateUniform(noiseTextureRid, _voronoiSeedShader);
 		
-		_voronoiSeedCompute.Call("register_texture", "noise_texture", 2, _textureSize.X, _textureSize.Y, noiseImage.GetData(), (int) RenderingDevice.DataFormat.R8G8B8A8Unorm);
+		ExecuteCompute(_voronoiSeedPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
+			_swapSets[_jumpFloodShader][OutputSwapIndex], noiseUniformRid]);
 		
-		Vector2I workgroupCount = new Vector2I(_textureSize.X / _workgroupSize.X, _textureSize.Y / _workgroupSize.Y);
-		_voronoiSeedCompute.Call("execute", "voronoi_seed", workgroupCount.X, workgroupCount.Y, 1);
-		_voronoiSeedCompute.Call("sync");
-		
-		byte[] imageData = _voronoiSeedCompute.Call("fetch_texture", "voronoi_seed_texture").AsByteArray();
-		image = Image.CreateFromData(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8, imageData);
-		texture.Update(image);
-		
-		_voronoiSeedTexture = texture;
-		_sprite.Texture = _voronoiSeedTexture;
+		_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
 		
 		_generatedVoronoiSeed = true;
 	}
 
+	private int _jumpFloodPass = 0;
 	private void GenerateVoronoi()
 	{
-		Image image = Image.CreateEmpty(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8);
-		ImageTexture texture = ImageTexture.CreateFromImage(image);
-		
-		_voronoiSeedCompute.Call("register_texture", "jump_flood_texture", 0, _textureSize.X, _textureSize.Y, image.GetData(), (int)RenderingDevice.DataFormat.R8G8B8A8Unorm);
+		// Number of passes required is the log2 of the largest viewport dimension rounded up to the nearest power of 2.
+		int passes = Mathf.CeilToInt(Mathf.Log(Mathf.Max(_textureSize.X, _textureSize.Y)) / Mathf.Log(2.0f));
+		for (; _jumpFloodPass < passes;)
+		{
+			// Offset for each pass is half the previous one, starting at half the square resolution rounded up to nearest power 2.
+			//i.e. for 768x512 we round up to 1024x1024 and the offset for the first pass is 512x512, then 256x256, etc. 
+			float offset = Mathf.Pow(2, passes - _jumpFloodPass - 1);
+			
+			float[] constants = [offset, 0.0f, 0.0f, 0.0f];
+			byte[] constantsByte = new byte[constants.Length * 4];
+			Buffer.BlockCopy(constants, 0, constantsByte, 0, constantsByte.Length);
 
-		float[] fillColor = [1.0f, 1.0f, 0.0f];
-		byte[] fillColorByte = new byte[fillColor.Length * 4];
-		Buffer.BlockCopy(fillColor, 0, fillColorByte, 0, fillColor.Length * 4);
-		_voronoiSeedCompute.Call("register_storage_buffer", "fill_color", 1, 0, fillColorByte);
+			// Switch our swap textures, so the previous output becomes the input. If this is the first pass,
+			// the input will now be the output of the Voronoi seed pass.
+			_currentSwap = (_currentSwap + 1) % 2;
+			
+			ExecuteCompute(_jumpFlooPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
+				_swapSets[_jumpFloodShader][OutputSwapIndex]], (computeList) =>
+			{
+				_rd.ComputeListSetPushConstant(computeList, constantsByte, (uint) constantsByte.Length);
+			});
 
-		Image noiseTexImage = _noiseTex.GetImage();
-		Image noiseImage = Image.CreateEmpty(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8);
-		for (int x = 0; x < _textureSize.X; x++) {
-			for (int y = 0; y < _textureSize.Y; y++) {
-				Color col = noiseTexImage.GetPixel(x, y);
-				noiseImage.SetPixel(x, y, col);
-			}
+			_jumpFloodPass++;
+			
+			_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
+			break;
 		}
 
-		//_voronoiSeedCompute.Call("register_texture_rid", "voronoi_seed_texture", 2, _voronoiSeedTextureRid, (int)RenderingDevice.DataFormat.R8G8B8A8Unorm);
+		if (_jumpFloodPass == passes)
+		{
+			_generatedVoronoi = true;
+		}
+	}
+
+	private void GenerateDistanceField()
+	{
+		_currentSwap = (_currentSwap + 1) % 2;
+		ExecuteCompute(_distanceFieldPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
+			_swapSets[_jumpFloodShader][OutputSwapIndex]]);
+		
+		_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
+		
+		_generatedDistanceField = true;
+	}
+
+	private int InputSwapIndex => _currentSwap;
+	private int OutputSwapIndex => (_currentSwap + 1) % 2;
+
+	private void ExecuteCompute(Rid pipeline, IReadOnlyList<Rid> uniforms, Action<long> extra = null)
+	{
+		long computeList = _rd.ComputeListBegin();
+		_rd.ComputeListBindComputePipeline(computeList, pipeline);
+
+		for (uint i = 0; i < uniforms.Count; i++)
+		{
+			Rid uniform = uniforms[(int) i];
+			_rd.ComputeListBindUniformSet(computeList, uniform, i);
+		}
+		
+		extra?.Invoke(computeList);
 		
 		Vector2I workgroupCount = new Vector2I(_textureSize.X / _workgroupSize.X, _textureSize.Y / _workgroupSize.Y);
-		_voronoiSeedCompute.Call("execute", "jump_flood", workgroupCount.X, workgroupCount.Y, 1);
-		_voronoiSeedCompute.Call("sync");
-
-		byte[] imageData = _voronoiSeedCompute.Call("fetch_texture", "jump_flood_texture").AsByteArray();
-		image = Image.CreateFromData(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8, imageData);
-		texture.Update(image);
-		
-		_voronoiTexture = texture;
-		_sprite.Texture = _voronoiTexture;
-		
-		_generatedVoronoi = true;
+		_rd.ComputeListDispatch(computeList, (uint) workgroupCount.X, (uint) workgroupCount.Y, 1);
+		_rd.ComputeListEnd();
 	}
 
 	public override void _Process(double delta)
@@ -146,9 +206,14 @@ public partial class Terrain : Node
 			GenerateVoronoiSeed();
 		}
 
-		if (!_generatedVoronoi)
+		while (!_generatedVoronoi)
 		{
-			//GenerateVoronoi();
+			GenerateVoronoi();
+		}
+		
+		if (!_generatedDistanceField)
+		{
+			GenerateDistanceField();
 		}
 	}
 }

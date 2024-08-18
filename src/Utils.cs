@@ -5,6 +5,22 @@ using Vector3 = System.Numerics.Vector3;
 
 public static class Utils
 {
+    public static void Error(string message)
+    {
+        OS.Alert(message, "Error!");
+        GD.PushError(message);
+    }
+    public static bool Assert(bool condition, string message)
+    {
+        if (!condition)
+        {
+            Error(message);
+            throw new Exception();
+        }
+
+        return condition;
+    }
+    
     public static readonly RandomNumberGenerator Rng = new();
 
     public static Godot.Vector2 To2D(this Godot.Vector3 vec)

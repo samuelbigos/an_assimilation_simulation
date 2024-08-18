@@ -1,20 +1,23 @@
-[gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
+[gd_scene load_steps=11 format=3 uid="uid://vikkfjvfvdfv"]
 
 [ext_resource type="Script" path="res://src/Game.cs" id="1_2ms8f"]
-[ext_resource type="Script" path="res://src/grid/Grid.cs" id="2_onci7"]
 [ext_resource type="Script" path="res://src/steering/SteeringManager.cs" id="2_wefgy"]
-[ext_resource type="Script" path="res://src/grid/FlowField.cs" id="3_ayydo"]
 [ext_resource type="Script" path="res://src/debug/DebugDraw.cs" id="4_r3dle"]
 [ext_resource type="Script" path="res://src/Player.cs" id="6_olp6x"]
 [ext_resource type="Script" path="res://src/Terrain.cs" id="7_ignms"]
+[ext_resource type="Shader" path="res://assets/terrain.gdshader" id="7_wult2"]
 [ext_resource type="Texture2D" uid="uid://brrfc36wgotqo" path="res://assets/terrain/new_noise_texture_2d.tres" id="8_l2x7m"]
-[ext_resource type="Script" path="res://addons/easy_compute/EasyCompute.gd" id="10_fmlfi"]
 
 [sub_resource type="Environment" id="Environment_cw83p"]
 background_mode = 1
 background_color = Color(0.843184, 0.843184, 0.843184, 1)
 
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_ufma8"]
+[sub_resource type="PlaneMesh" id="PlaneMesh_0oxxn"]
+size = Vector2(1, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_35xi0"]
+render_priority = 0
+shader = ExtResource("7_wult2")
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1_2ms8f")
@@ -24,20 +27,12 @@ transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 1, 
 environment = SubResource("Environment_cw83p")
 projection = 1
 current = true
-size = 5.0
+size = 100.0
 far = 2.0
 
 [node name="SteeringManager" type="Node" parent="." node_paths=PackedStringArray("_cam")]
 script = ExtResource("2_wefgy")
 _cam = NodePath("../Camera3D")
-
-[node name="Grid" type="Node3D" parent="."]
-script = ExtResource("2_onci7")
-rect = Rect2(-10, -10, 20, 20)
-
-[node name="FlowField" type="Node3D" parent="." node_paths=PackedStringArray("_grid")]
-script = ExtResource("3_ayydo")
-_grid = NodePath("../Grid")
 
 [node name="DebugDraw" type="Node" parent="."]
 script = ExtResource("4_r3dle")
@@ -46,12 +41,11 @@ script = ExtResource("4_r3dle")
 script = ExtResource("6_olp6x")
 _steeringRadius = 1.0
 
-[node name="Terrain" type="Node3D" parent="." node_paths=PackedStringArray("_sprite")]
+[node name="Terrain" type="Node3D" parent="." node_paths=PackedStringArray("_terrainMesh")]
 script = ExtResource("7_ignms")
-_sprite = NodePath("Sprite3D")
+_terrainMesh = NodePath("MeshInstance3D")
 _noiseTex = ExtResource("8_l2x7m")
-_easyComputeScript = ExtResource("10_fmlfi")
 
-[node name="Sprite3D" type="Sprite3D" parent="Terrain"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0)
-texture = SubResource("NoiseTexture2D_ufma8")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Terrain"]
+mesh = SubResource("PlaneMesh_0oxxn")
+surface_material_override/0 = SubResource("ShaderMaterial_35xi0")
