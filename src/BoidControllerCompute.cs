@@ -7,6 +7,10 @@ using System.Runtime.InteropServices;
 public partial class BoidControllerCompute : Node
 {
 	[Export] private Terrain _terrain;
+	[Export] private GameCamera _cam;
+
+	[Export] private int _playerStartBoids = 32;
+	
 	[Export] private float _boidMaxSpeed = 1.0f;
 	[Export] private float _boidMaxForce = 0.1f;
 	[Export] private float _boidDefaultRadius = 2.0f;
@@ -14,6 +18,8 @@ public partial class BoidControllerCompute : Node
 	[Export] private float _boidCohesionRadius = 10.0f;
 	[Export] private float _boidAlignmentRadius = 15.0f;
 	[Export] private float _boidSdfAvoidDistance = 10.0f;
+	[Export] private float _boidTeamInfluenceRadius = 15.0f;
+	[Export] private float _boidMouseInfluenceRadius = 30.0f;
 
 	private bool _readyToProcess = false;
 	private Random _rng = new Random();
@@ -79,22 +85,28 @@ public partial class BoidControllerCompute : Node
 		Span<float> radiiSpan = MemoryMarshal.Cast<byte, float>(new Span<byte>(buffers[(int) Buffers.Radius], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Radius]));
 		Span<int> teamSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(buffers[(int) Buffers.Team], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Team]));
 		
-		// float sqrtSize = Mathf.Sqrt(MAX_BOIDS);
-		// float spacing = _boidDefaultRadius * 2.5f;
-		List<Vector2I> safePositions = new List<Vector2I>(_terrain.SafePositions);
-		for (int i = 0; i < MAX_BOIDS; i++)
+		for (int i = 0; i < MAX_BOIDS - _playerStartBoids; i++)
 		{
-			// positionsSpan[i] = new Vector2(
-			// 	spacing * (i % (int)sqrtSize - sqrtSize / 2), 
-			// 	spacing * (i / (int)sqrtSize - sqrtSize / 2));
-			int safeIndex = _rng.Next() % safePositions.Count;
+			int safeIndex = _rng.Next() % _terrain.EnemySpawn.Count;
+			positionsSpan[i] = _terrain.EnemySpawn[safeIndex];
 			// Give a little bump in a random direction to prevent two boids spawning at the same position and exploding the compute shader (I think).
-			positionsSpan[i] = safePositions[safeIndex] + new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
-			velocitiesSpan[i] = new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
+			positionsSpan[i] += new Vector2((float) _rng.NextDouble() - 0.5f, (float) _rng.NextDouble() - 0.5f) * 0.1f;
+			velocitiesSpan[i] = new Vector2((float) _rng.NextDouble() - 0.5f, (float) _rng.NextDouble() - 0.5f) * 0.1f;
 			radiiSpan[i] = _boidDefaultRadius;
-			teamSpan[i] = _rng.Next() % 2;
+			teamSpan[i] = 1;
 		}
-		
+
+		for (int i = MAX_BOIDS - _playerStartBoids; i < MAX_BOIDS; i++)
+		{
+			int safeIndex = _rng.Next() % _terrain.PlayerSpawn.Count;
+			positionsSpan[i] = _terrain.PlayerSpawn[safeIndex];
+			// Give a little bump in a random direction to prevent two boids spawning at the same position and exploding the compute shader (I think).
+			positionsSpan[i] += new Vector2((float) _rng.NextDouble() - 0.5f, (float) _rng.NextDouble() - 0.5f) * 0.1f;
+			velocitiesSpan[i] = new Vector2((float) _rng.NextDouble() - 0.5f, (float) _rng.NextDouble() - 0.5f) * 0.1f;
+			radiiSpan[i] = _boidDefaultRadius;
+			teamSpan[i] = 0;
+		}
+
 		// Layout the compute buffers.
 		for (int i = 0; i < (int) Buffers.COUNT; i++) {
 			_buffers[i] = _rd.StorageBufferCreate((uint) (MAX_BOIDS * _bufferSizes[i]), buffers[i]);
@@ -146,10 +158,20 @@ public partial class BoidControllerCompute : Node
 		byte[] debugOut = _rd.BufferGetData(_buffers[(int) Buffers.DebugOut], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.DebugOut]));
 		Span<Vector4> debugOutSpan = MemoryMarshal.Cast<byte, Vector4>(new Span<byte>(debugOut, 0, debugOut.Length));
 
+		Vector2 min = new Vector2(9999.0f, 9999.0f);
+		Vector2 max = new Vector2(-9999.0f, -9999.0f);
 		for (int i = 0; i < positionsSpan.Length; i++)
 		{
 			//GD.Print($"Boid #{i}: Position: {positionsSpan[i]} Velocity: {velocitiesSpan[i]}");
 			//GD.Print($"Debug: {debugOutSpan[i]}");
+
+			if (teamSpan[i] == 0)
+			{
+				min.X = Mathf.Min(min.X, positionsSpan[i].X);
+				min.Y = Mathf.Min(min.Y, positionsSpan[i].Y);
+				max.X = Mathf.Max(max.X, positionsSpan[i].X);
+				max.Y = Mathf.Max(max.Y, positionsSpan[i].Y);
+			}
 			
 			// Draw boid.
 			Vector3 boidPos = positionsSpan[i].To3D();
@@ -164,11 +186,14 @@ public partial class BoidControllerCompute : Node
 			Vector3 p0 = boidPos + forward * -size * 0.33f + right * size * 0.5f;
 			Vector3 p1 = boidPos + forward * size * 0.66f;
 			Vector3 p2 = boidPos + forward * -size * 0.33f - right * size * 0.5f;
-			DebugDraw.Circle(boidPos, 32, size, Colors.DarkGray);
+			DebugDraw.Circle(boidPos, 32, size * 0.9f, Colors.DarkGray);
 			DebugDraw.Line(p0, p1, col);
 			DebugDraw.Line(p1, p2, col);
 			DebugDraw.Line(p2, p0, col);
 		}
+		
+		// Update the camera to contain all our boids.
+		_cam.SetMinMax(min, max);
 	}
 	
 	private void ExecuteCompute(Rid pipeline)
@@ -182,6 +207,8 @@ public partial class BoidControllerCompute : Node
 		}
 		_rd.ComputeListBindUniformSet(computeList, _distanceFieldSet, (uint) Buffers.COUNT);
 		
+		Vector3 mouseWorld = _cam.ProjectPosition(GetViewport().GetMousePosition(), 0.0f);
+		
 		// Ordering must be the same as defined in the compute shader.
 		List<float> constants = [ MAX_BOIDS, 
 			_terrain.Size.X, 
@@ -192,7 +219,12 @@ public partial class BoidControllerCompute : Node
 			_boidSeparationRadius,
 			_boidCohesionRadius,
 			_boidAlignmentRadius,
-			_boidSdfAvoidDistance
+			_boidSdfAvoidDistance,
+			_boidTeamInfluenceRadius,
+			Input.IsActionPressed("seek") ? 1.0f : 0.0f,
+			mouseWorld.X,
+			mouseWorld.Z,
+			_boidMouseInfluenceRadius
 		];
 		
 		// Padding

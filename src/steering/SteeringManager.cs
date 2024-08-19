@@ -9,7 +9,7 @@ using Vector2 = System.Numerics.Vector2;
 
 public partial class SteeringManager : Singleton<SteeringManager>
 {
-    [Export] public Camera3D _cam;
+    [Export] public GameCamera _cam;
     
     public enum ObstacleShape
     {
@@ -187,7 +187,7 @@ public partial class SteeringManager : Singleton<SteeringManager>
 
         _delta = delta;
 
-        if (Input.IsMouseButtonPressed(MouseButton.Right))
+        //if (Input.IsMouseButtonPressed(MouseButton.Right))
         {
             Vector3 mouseWorld = _cam.ProjectPosition(GetViewport().GetMousePosition(), 0.0f);
             _targetPosition = new Vector2(mouseWorld.X, mouseWorld.Z).ToGodot();

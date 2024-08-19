@@ -18,9 +18,9 @@ public partial class SteeringManager
     private void DebugDrawSteering()
     {
         // target
-        DebugDraw.Circle(_targetPosition.To3D(), 32, 1, Colors.Green);
-        DebugDraw.Circle(_targetPosition.To3D(), 32, 0.5f, Colors.Green);
-        DebugDraw.Circle(_targetPosition.To3D(), 32, 0.25f, Colors.Green);
+        DebugDraw.Circle(_targetPosition.To3D(), 32, 5f, Colors.Green);
+        DebugDraw.Circle(_targetPosition.To3D(), 32, 3f, Colors.Green);
+        DebugDraw.Circle(_targetPosition.To3D(), 32, 1f, Colors.Green);
         
         // boids
         Span<Boid> boids = _boidPool.AsSpan();

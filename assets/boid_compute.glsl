@@ -34,6 +34,11 @@ layout(push_constant, std430) uniform Params {
 	float boidCohesionRadius;
 	float boidAlignmentRadius;
 	float boidSdfAvoidDistance;
+	float boidTeamInfluenceRadius;
+	float mousePressed;
+	float mousePosX;
+	float mousePosY;
+	float boidMouseInfluenceRadius;
 } params;
 
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
@@ -119,6 +124,11 @@ vec2 steeringAvoid(vec2 v0, vec2 p0, vec2 p1, float r0, float r1, float c) {
 	desired = normalize(v0 - desired) * params.boidMaxSpeed;
 	return desired;
 }
+vec2 steeringSeek(vec2 v0, vec2 p0, vec2 p1, float influence) {
+	vec2 desired = normalize(p1 - p0) * params.boidMaxSpeed * (1.0 + influence);
+	vec2 force = desired - v0;
+	return force * influence;
+}
 
 /* Main */
 void main() {
@@ -127,6 +137,7 @@ void main() {
 	vec2 boidPos = decodePos(boidPositions.data[id]);
 	vec2 boidVel = boidVelocities.data[id];
 	float boidRadius = boidRadii.data[id];
+	int thisTeam = boidTeam.data[id];
 
 	/* Steering behaviours */
 	vec2 separationForce = vec2(0,0);
@@ -153,11 +164,14 @@ void main() {
 
 		separationForce += steeringSeparation(v0, p0, p1, r0, r1, params.boidSeparationRadius);
 		
-		if (lengthSq(p0 - p1) < sq(params.boidCohesionRadius)) {
+		float vision = 0.0;
+		if (lengthSq(p0 - p1) < sq(params.boidCohesionRadius) && boidTeam.data[i] == thisTeam
+			&& dot(normalize(v0), normalize(p1 - p0)) > vision) {
 			cohesionPosition += p1;
 			cohesionCount++;
 		}
-		if (lengthSq(p0 - p1) < sq(params.boidAlignmentRadius)) {
+		if (lengthSq(p0 - p1) < sq(params.boidAlignmentRadius) && boidTeam.data[i] == thisTeam
+			&& dot(normalize(v0), normalize(p1 - p0)) > vision) {
 			alignmentVelocity += v1;
 			alignmentCount++;
 		}
@@ -173,7 +187,7 @@ void main() {
 			vec2 nv0 = v0;
 			nv0 += projectUonV(v1, p1 - p0);
 			nv0 -= projectUonV(v0, p0 - p1);
-			boidVel = nv0 * 1.0;
+			//boidVel = nv0 * 1.0;
 		}
     }
 
@@ -194,6 +208,7 @@ void main() {
 	float r1 = 0.0;
 
 	avoidForce += steeringAvoid(v0, p0, p1, r0, r1, params.boidSdfAvoidDistance);
+	avoidForce += steeringSeparation(v0, p0, p1, r0, r1, params.boidSdfAvoidDistance);
 
 	float separation = distance(p0, p1);
 	float r = r0 + r1;
@@ -204,7 +219,7 @@ void main() {
 		vec2 nv0 = v0;
 		nv0 += projectUonV(v1, p1 - p0);
 		nv0 -= projectUonV(v0, p0 - p1);
-		boidVel = nv0 * 1.0;
+		//boidVel = nv0 * 1.0;
 	}
 
 	// Change alignment.
@@ -212,7 +227,7 @@ void main() {
 	int a1 = 0;
 	for (int i = 0; i < params.numBoids; i++) {
 		if (i == id) continue;
-		if (lengthSq(boidPos - decodePos(boidPositions.data[i])) > sq(params.boidCohesionRadius)) continue;		
+		if (lengthSq(boidPos - decodePos(boidPositions.data[i])) > sq(params.boidTeamInfluenceRadius)) continue;		
 		if (boidTeam.data[i] == 1) {
 			a1++;
 		} else {
@@ -226,21 +241,40 @@ void main() {
 		boidTeam.data[id] = 0;
 	}
 
+	// Seek mouse.
+	float mouseBoost = 1.0;
+	if (params.mousePressed > 0.5 && thisTeam == 0) {
+		vec2 mouse = decodePos(vec2(params.mousePosX, params.mousePosY));
+		float mouseDistSq = lengthSq(mouse - boidPos);
+		float influenceSq = sq(params.boidMouseInfluenceRadius);
+		if (mouseDistSq < influenceSq) {
+			float influence = 1.0 - (mouseDistSq / influenceSq);
+			mouseBoost += influence * 0.5;
+			totalForce += steeringSeek(boidVel, boidPos, mouse, influence);
+		}
+	}
+
+	float maxForce = params.boidMaxForce * mouseBoost;
+
 	// Accumulate the flocking forces.
-	totalForce += limit(separationForce, params.boidMaxForce / 3.0);
-	totalForce += limit(cohesionForce, params.boidMaxForce / 3.0);
-	totalForce += limit(alignmentForce, params.boidMaxForce / 3.0);
+	totalForce += limit(separationForce, maxForce / 3.0);
+	totalForce += limit(cohesionForce, maxForce / 3.0);
+	totalForce += limit(alignmentForce, maxForce / 3.0);
 
 	// Give a little force to maintain the max speed, to keep boids moving.
 	totalForce += steeringMaintainSpeed(boidVel) * 0.25;
 
 	// Avoid terrain.
-	totalForce += limit(avoidForce, params.boidMaxForce) * 2.0;
+	totalForce += limit(avoidForce, maxForce);
 
-	totalForce = limit(totalForce, params.boidMaxForce);
+	// Apply separation last and give it priority.
+	// separationForce = limit(separationForce, maxForce / 1.5);
+	// float separationMag = length(separationForce);
+	//totalForce = limit(totalForce, maxForce - separationMag) + separationForce;
 
+	totalForce = limit(totalForce, maxForce);
 	boidVel += totalForce;
-	boidVel = limit(boidVel, params.boidMaxSpeed);
+	boidVel = limit(boidVel, params.boidMaxSpeed * mouseBoost);
 
 	boidPos = boidPos + boidVel;
 

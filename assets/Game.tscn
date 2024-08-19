@@ -1,7 +1,7 @@
 [gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
 
 [ext_resource type="Script" path="res://src/Game.cs" id="1_2ms8f"]
-[ext_resource type="Script" path="res://src/Camera.cs" id="2_5ghvg"]
+[ext_resource type="Script" path="res://src/GameCamera.cs" id="2_5ghvg"]
 [ext_resource type="Script" path="res://src/steering/SteeringManager.cs" id="2_wefgy"]
 [ext_resource type="Script" path="res://src/debug/DebugDraw.cs" id="4_r3dle"]
 [ext_resource type="Script" path="res://src/Terrain.cs" id="7_ignms"]
@@ -23,7 +23,7 @@ shader = ExtResource("7_wult2")
 [node name="Game" type="Node3D"]
 script = ExtResource("1_2ms8f")
 
-[node name="Camera3D" type="Camera3D" parent="."]
+[node name="GameCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 1, 0)
 environment = SubResource("Environment_cw83p")
 projection = 1
@@ -35,7 +35,7 @@ _zoomSpeed = 0.05
 
 [node name="SteeringManager" type="Node" parent="." node_paths=PackedStringArray("_cam")]
 script = ExtResource("2_wefgy")
-_cam = NodePath("../Camera3D")
+_cam = NodePath("../GameCamera")
 
 [node name="DebugDraw" type="Node" parent="."]
 script = ExtResource("4_r3dle")
@@ -51,12 +51,15 @@ _sdfDistMod = 50.0
 mesh = SubResource("PlaneMesh_0oxxn")
 surface_material_override/0 = SubResource("ShaderMaterial_35xi0")
 
-[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain")]
+[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain", "_cam")]
 script = ExtResource("8_f8mes")
 _terrain = NodePath("../Terrain")
+_cam = NodePath("../GameCamera")
 _boidMaxSpeed = 0.5
 _boidMaxForce = 0.05
 _boidDefaultRadius = 2.5
 _boidSeparationRadius = 10.0
 _boidAlignmentRadius = 10.0
-_boidSdfAvoidDistance = 50.0
+_boidSdfAvoidDistance = 25.0
+_boidTeamInfluenceRadius = 25.0
+_boidMouseInfluenceRadius = 66.0

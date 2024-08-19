@@ -3,9 +3,12 @@
 
 layout(set = 0, binding = 0, rgba8) uniform image2D _input;
 layout(set = 1, binding = 0, rgba8) uniform image2D _output;
-layout(set = 2, binding = 0, std430) restrict buffer SafePositions {
+layout(set = 2, binding = 0, std430) restrict buffer EnemySpawns {
 	int data[];
-} _safe;
+} _enemySpawns;
+layout(set = 3, binding = 0, std430) restrict buffer PlayerSpawns {
+	int data[];
+} _playerSpawns;
 
 layout(push_constant, std430) uniform Params {
 	float sdfDistMod;
@@ -25,9 +28,15 @@ void main()
     pos.y *= imageSize.y;
     float dist = distance(pos, uv);
 
-	// Fill out the safe positions buffer so we know we can spawn a boid here.
-	if (dist > 25.0 && (uv.x % 5) == 0 && (uv.y % 5) == 0)
-		_safe.data[uv.x * imageSize.y + uv.y] = 1;
+	// Fill out the spawn positions buffers.
+	if (dist > 25.0 && (uv.x % 5) == 0 && (uv.y % 5) == 0) {
+		if (uv.x < imageSize.x * 0.33 || uv.y < imageSize.y * 0.33 || uv.x > imageSize.x * 0.66 || uv.y > imageSize.y * 0.66) {
+			_enemySpawns.data[uv.x * imageSize.y + uv.y] = 1;
+		}
+		if (uv.x > imageSize.x * 0.45 && uv.y > imageSize.y * 0.45 && uv.x < imageSize.x * 0.55 && uv.y < imageSize.y * 0.55) {
+			_playerSpawns.data[uv.x * imageSize.y + uv.y] = 1;
+		}
+	}
 
     dist = clamp(dist / params.sdfDistMod, 0.0, 1.0);
     imageStore(_output, uv, vec4(dist, dist, dist, 1.0));	

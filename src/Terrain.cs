@@ -13,7 +13,8 @@ public partial class Terrain : Node
 	public Vector2I Size => _textureSize;
 	public Action DistanceFieldCreated;
 	public float SDFDistMod => _sdfDistMod;
-	public List<Vector2I> SafePositions => _safePositionsList;
+	public List<Vector2I> EnemySpawn => _enemySpawnList;
+	public List<Vector2I> PlayerSpawn => _playerSpawnList;
 	
 	private Vector2I _workgroupSize = new Vector2I(32, 32);
 	private Vector2I _textureSize;
@@ -38,9 +39,11 @@ public partial class Terrain : Node
 	private RDTextureFormat _format;
 	private Texture2Drd _texture2Drd;
 
-	private Rid _safePositionsBuffer;
-	private List<Vector2I> _safePositionsList = new List<Vector2I>();
-	
+	private Rid _enemySpawnBuffer;
+	private List<Vector2I> _enemySpawnList = new List<Vector2I>();
+	private Rid _playerSpawnBuffer;
+	private List<Vector2I> _playerSpawnList = new List<Vector2I>();
+
 	public override void _Ready()
 	{
 		_texture2Drd = new Texture2Drd();
@@ -192,31 +195,56 @@ public partial class Terrain : Node
 		Buffer.BlockCopy(constants, 0, constantsByte, 0, constantsByte.Length);
 
 		uint safePositionsSize = (uint) (_textureSize.X * _textureSize.Y);
-		_safePositionsBuffer = _rd.StorageBufferCreate(safePositionsSize * 4);
-		_rd.BufferClear(_safePositionsBuffer, 0, safePositionsSize * 4);
+		_enemySpawnBuffer = _rd.StorageBufferCreate(safePositionsSize * 4);
+		_rd.BufferClear(_enemySpawnBuffer, 0, safePositionsSize * 4);
+		_playerSpawnBuffer = _rd.StorageBufferCreate(safePositionsSize * 4);
+		_rd.BufferClear(_playerSpawnBuffer, 0, safePositionsSize * 4);
 		
-		RDUniform uniform = new RDUniform();
-		uniform.UniformType = RenderingDevice.UniformType.StorageBuffer;
-		uniform.Binding = 0;
-		uniform.AddId(_safePositionsBuffer);
-		Rid safePositionsUniform = _rd.UniformSetCreate([uniform], _distanceFieldShader, 2);
-		Utils.Assert(safePositionsUniform.IsValid, "Failed to create uniform.");
-		
+		// Enemy spawn set.
+		Rid enemySpawnUniform;
+		{
+			RDUniform uniform = new RDUniform();
+			uniform.UniformType = RenderingDevice.UniformType.StorageBuffer;
+			uniform.Binding = 0;
+			uniform.AddId(_enemySpawnBuffer);
+			enemySpawnUniform = _rd.UniformSetCreate([uniform], _distanceFieldShader, 2);
+			Utils.Assert(enemySpawnUniform.IsValid, "Failed to create uniform.");
+		}
+
+		// Player spawn set.
+		Rid playerSpawnUniform;
+		{
+			RDUniform uniform = new RDUniform();
+			uniform.UniformType = RenderingDevice.UniformType.StorageBuffer;
+			uniform.Binding = 0;
+			uniform.AddId(_playerSpawnBuffer);
+			playerSpawnUniform = _rd.UniformSetCreate([uniform], _distanceFieldShader, 3);
+			Utils.Assert(playerSpawnUniform.IsValid, "Failed to create uniform.");
+		}
+
 		ExecuteCompute(_distanceFieldPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
 			_swapSets[_jumpFloodShader][OutputSwapIndex]], (computeList) =>
 		{
-			_rd.ComputeListBindUniformSet(computeList, safePositionsUniform, 2);
+			_rd.ComputeListBindUniformSet(computeList, enemySpawnUniform, 2);
+			_rd.ComputeListBindUniformSet(computeList, playerSpawnUniform, 3);
 			_rd.ComputeListSetPushConstant(computeList, constantsByte, (uint) constantsByte.Length);
 		});
 		
 		// Even though we only need to store a bit per position (pixel) in the distance field, GLSL doesn't support
 		// 8-bit types so we'll use an int for each. TODO: pack bit data instead.
-		byte[] safePositions = _rd.BufferGetData(_safePositionsBuffer, 0, safePositionsSize * 4);
-		Span<int> safePositionsSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(safePositions, 0, safePositions.Length));
-		for (int i = 0; i < safePositionsSpan.Length; i++)
+		byte[] enemySpawns = _rd.BufferGetData(_enemySpawnBuffer, 0, safePositionsSize * 4);
+		Span<int> enemySpawnsSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(enemySpawns, 0, enemySpawns.Length));
+		for (int i = 0; i < enemySpawnsSpan.Length; i++)
 		{
-			if (safePositionsSpan[i] == 0) continue;
-			_safePositionsList.Add(new Vector2I(i / _textureSize.X, i % _textureSize.Y) - _textureSize / 2);
+			if (enemySpawnsSpan[i] == 0) continue;
+			_enemySpawnList.Add(new Vector2I(i / _textureSize.X, i % _textureSize.Y) - _textureSize / 2);
+		}
+		byte[] playerSpawns = _rd.BufferGetData(_playerSpawnBuffer, 0, safePositionsSize * 4);
+		Span<int> playerSpawnsSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(playerSpawns, 0, playerSpawns.Length));
+		for (int i = 0; i < playerSpawnsSpan.Length; i++)
+		{
+			if (playerSpawnsSpan[i] == 0) continue;
+			_playerSpawnList.Add(new Vector2I(i / _textureSize.X, i % _textureSize.Y) - _textureSize / 2);
 		}
 		
 		_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
