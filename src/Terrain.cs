@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 public partial class Terrain : Node
 {
@@ -12,6 +13,7 @@ public partial class Terrain : Node
 	public Vector2I Size => _textureSize;
 	public Action DistanceFieldCreated;
 	public float SDFDistMod => _sdfDistMod;
+	public List<Vector2I> SafePositions => _safePositionsList;
 	
 	private Vector2I _workgroupSize = new Vector2I(32, 32);
 	private Vector2I _textureSize;
@@ -35,6 +37,9 @@ public partial class Terrain : Node
 	private RenderingDevice _rd;
 	private RDTextureFormat _format;
 	private Texture2Drd _texture2Drd;
+
+	private Rid _safePositionsBuffer;
+	private List<Vector2I> _safePositionsList = new List<Vector2I>();
 	
 	public override void _Ready()
 	{
@@ -185,12 +190,34 @@ public partial class Terrain : Node
 		float[] constants = [_sdfDistMod, 0.0f, 0.0f, 0.0f];
 		byte[] constantsByte = new byte[constants.Length * 4];
 		Buffer.BlockCopy(constants, 0, constantsByte, 0, constantsByte.Length);
+
+		uint safePositionsSize = (uint) (_textureSize.X * _textureSize.Y);
+		_safePositionsBuffer = _rd.StorageBufferCreate(safePositionsSize * 4);
+		_rd.BufferClear(_safePositionsBuffer, 0, safePositionsSize * 4);
+		
+		RDUniform uniform = new RDUniform();
+		uniform.UniformType = RenderingDevice.UniformType.StorageBuffer;
+		uniform.Binding = 0;
+		uniform.AddId(_safePositionsBuffer);
+		Rid safePositionsUniform = _rd.UniformSetCreate([uniform], _distanceFieldShader, 2);
+		Utils.Assert(safePositionsUniform.IsValid, "Failed to create uniform.");
 		
 		ExecuteCompute(_distanceFieldPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
 			_swapSets[_jumpFloodShader][OutputSwapIndex]], (computeList) =>
 		{
+			_rd.ComputeListBindUniformSet(computeList, safePositionsUniform, 2);
 			_rd.ComputeListSetPushConstant(computeList, constantsByte, (uint) constantsByte.Length);
 		});
+		
+		// Even though we only need to store a bit per position (pixel) in the distance field, GLSL doesn't support
+		// 8-bit types so we'll use an int for each. TODO: pack bit data instead.
+		byte[] safePositions = _rd.BufferGetData(_safePositionsBuffer, 0, safePositionsSize * 4);
+		Span<int> safePositionsSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(safePositions, 0, safePositions.Length));
+		for (int i = 0; i < safePositionsSpan.Length; i++)
+		{
+			if (safePositionsSpan[i] == 0) continue;
+			_safePositionsList.Add(new Vector2I(i / _textureSize.X, i % _textureSize.Y) - _textureSize / 2);
+		}
 		
 		_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
 		
@@ -216,6 +243,8 @@ public partial class Terrain : Node
 		Vector2I workgroupCount = new Vector2I(_textureSize.X / _workgroupSize.X, _textureSize.Y / _workgroupSize.Y);
 		_rd.ComputeListDispatch(computeList, (uint) workgroupCount.X, (uint) workgroupCount.Y, 1);
 		_rd.ComputeListEnd();
+		_rd.Submit();
+		_rd.Sync();
 	}
 
 	public override void _Process(double delta)

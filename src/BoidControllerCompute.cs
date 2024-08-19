@@ -11,8 +11,9 @@ public partial class BoidControllerCompute : Node
 	[Export] private float _boidMaxForce = 0.1f;
 	[Export] private float _boidDefaultRadius = 2.0f;
 	[Export] private float _boidSeparationRadius = 2.0f;
-	[Export] private float _boidCoherenceRadius = 10.0f;
+	[Export] private float _boidCohesionRadius = 10.0f;
 	[Export] private float _boidAlignmentRadius = 15.0f;
+	[Export] private float _boidSdfAvoidDistance = 10.0f;
 
 	private struct Boid
 	{
@@ -23,9 +24,10 @@ public partial class BoidControllerCompute : Node
 	private List<Boid> _boids = new List<Boid>();
 
 	private bool _readyToProcess = false;
+	private Random _rng = new Random();
 	
 	// Boid buffers
-	private const int MAX_BOIDS = 2;
+	private const int MAX_BOIDS = 4096;
 	
 	// Compute
 	private RenderingDevice _rd;
@@ -76,20 +78,29 @@ public partial class BoidControllerCompute : Node
 		
 		float sqrtSize = Mathf.Sqrt(MAX_BOIDS);
 		float spacing = _boidDefaultRadius * 2.5f;
-		for (int i = 0; i < positionsSpan.Length; i++)
+		List<Vector2I> safePositions = new List<Vector2I>(_terrain.SafePositions);
+		for (int i = 0; i < MAX_BOIDS; i++)
 		{
-			positionsSpan[i] = new Vector2(
-				spacing * (i % (int)sqrtSize - sqrtSize / 2), 
-				spacing * (i / (int)sqrtSize - sqrtSize / 2));
+			// positionsSpan[i] = new Vector2(
+			// 	spacing * (i % (int)sqrtSize - sqrtSize / 2), 
+			// 	spacing * (i / (int)sqrtSize - sqrtSize / 2));
 			
-			velocitiesSpan[i] = new Vector2(0.0f, 0.0f);
+			velocitiesSpan[i] = new Vector2(1.0f, 1.0f) * 0.01f;
+
+			int safeIndex = _rng.Next() % safePositions.Count;
+			// Give a little bump in a random direction to prevent two boids spawning at the same position and exploding the compute shader (I think).
+			positionsSpan[i] = safePositions[safeIndex] + new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
+			//safePositions.RemoveAt(safeIndex);
+			
+			//velocitiesSpan[i] = new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
+			
 			radiiSpan[i] = _boidDefaultRadius;
 		}
 
-		positionsSpan[0] = new Vector2(-20.0f, 50.0f);
-		positionsSpan[1] = new Vector2(20.0f, 50.0f);
-		velocitiesSpan[0] = new Vector2(0.1f, 0.0f);
-		velocitiesSpan[1] = new Vector2(-0.1f, 0.0f);
+		// positionsSpan[0] = new Vector2(-20.0f, 50.0f);
+		// positionsSpan[1] = new Vector2(20.0f, 50.0f);
+		// velocitiesSpan[0] = new Vector2(0.1f, 0.0f);
+		// velocitiesSpan[1] = new Vector2(-0.1f, 0.0f);
 		
 		// Layouts
 		_positionBuffer = _rd.StorageBufferCreate(MAX_BOIDS * 8, positions);
@@ -115,11 +126,13 @@ public partial class BoidControllerCompute : Node
 		_readyToProcess = true;
 	}
 
+	private int steps = 0;
 	public override void _Process(double delta)
 	{
 		base._Process(delta);
 
 		if (!_readyToProcess) return;
+		//if (steps > 0) return;
 		
 		ExecuteCompute(_pipeline);
 		
@@ -139,7 +152,7 @@ public partial class BoidControllerCompute : Node
 		for (int i = 0; i < positionsSpan.Length; i++)
 		{
 			//GD.Print($"Boid #{i}: Position: {positionsSpan[i]} Velocity: {velocitiesSpan[i]}");
-			GD.Print($"Debug: {debugOutSpan[i]}");
+			//GD.Print($"Debug: {debugOutSpan[i]}");
 			
 			// Draw boid.
 			Vector3 boidPos = positionsSpan[i].To3D();
@@ -155,6 +168,8 @@ public partial class BoidControllerCompute : Node
 			DebugDraw.Line(p1, p2, col);
 			DebugDraw.Line(p2, p0, col);
 		}
+
+		steps++;
 	}
 	
 	private void ExecuteCompute(Rid pipeline)
@@ -176,8 +191,10 @@ public partial class BoidControllerCompute : Node
 			_boidMaxSpeed,
 			_boidMaxForce,
 			_boidSeparationRadius,
-			_boidCoherenceRadius,
-			_boidAlignmentRadius ];
+			_boidCohesionRadius,
+			_boidAlignmentRadius,
+			_boidSdfAvoidDistance
+		];
 		
 		// Padding
 		int alignment = 4;

@@ -18,7 +18,12 @@ void main()
 	val = step(threshold, val);
 
 	vec2 imageSize = vec2(gl_NumWorkGroups.x * gl_WorkGroupSize.x, gl_NumWorkGroups.y * gl_WorkGroupSize.y);
-	if (val > 0.5)
+
+	float borderSize = 10.0;
+	bool isBorder = uv.x >= imageSize.x - borderSize || uv.y >= imageSize.y - borderSize 
+		|| uv.x <= borderSize || uv.y <= borderSize;
+		
+	if (val > 0.5 || isBorder)
 	{
 		vec4 col = vec4(float(uv.x) / float(imageSize.x),  float(uv.y) / float(imageSize.y), 0.0, 1.0);
 		imageStore(_output, uv, col);

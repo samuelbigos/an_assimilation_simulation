@@ -8,8 +8,8 @@ layout(set = 0, binding = 0, std430) restrict buffer Position {
 layout(set = 1, binding = 0, std430) restrict buffer Velocity {
 	vec2 data[];
 } boidVelocities;
-layout(set = 2, binding = 0, std430) restrict buffer Radius {
-	float data[];
+layout(set = 2, binding = 0, std430) restrict buffer BoidData {
+	float radius[];
 } boidRadii;
 layout(set = 3, binding = 0, std430) restrict buffer DebugOut {
 	vec4 data[];
@@ -25,8 +25,9 @@ layout(push_constant, std430) uniform Params {
 	float boidMaxSpeed;
 	float boidMaxForce;
 	float boidSeparationRadius;
-	float boidCoherenceRadius;
+	float boidCohesionRadius;
 	float boidAlignmentRadius;
+	float boidSdfAvoidDistance;
 } params;
 
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
@@ -45,7 +46,7 @@ vec2 calcNormal(vec2 p) {
 }
 vec2 projectUonV(vec2 u, vec2 v) {
 	vec2 r;
-	r = v * (dot(u, v) / dot(v, v));
+	r = v * (dot(u, v) / max(0.000001, dot(v, v)));
 	return r;
 }
 float lengthSq(vec2 v) {
@@ -55,9 +56,9 @@ float sq(float v) {
 	return v * v;
 }
 vec2 limit(vec2 v, float l) {
-	float length = length(v);
-	if (length == 0.0f) return v;
-	float i = l / length;
+	float len = length(v);
+	if (len == 0.0f) return v;
+	float i = l / len;
 	i = min(i, 1.0f);
 	return v * i;
 }
@@ -71,17 +72,46 @@ vec2 decodePos(vec2 p) {
 }
 
 /* Steering behaviours */
-vec2 steeringSeparation(vec2 v0, vec2 p0, vec2 p1, float r0, float r1) {
-	float dist = max(0.0, length(p0 - p1) - (r0 + r1));
-	vec2 dir = normalize(p1 - p0);
-	vec2 desired = max(0.0, params.boidSeparationRadius - dist) * dir;
-	return desired - v0;
+vec2 steeringSeparation(vec2 v0, vec2 p0, vec2 p1, float r0, float r1, float c) {
+	float distSq = lengthSq(p0 - p1);
+	if (distSq == 0.0) return vec2(0,0);
+	distSq = max(0.00001, distSq - (r0 + r1));
+	float scale = clamp(1.0 - (distSq / sq(c)), 0.00001, 1.0);
+	vec2 dir = normalize(p0 - p1);
+	return limit(dir, scale * params.boidMaxForce);
+	// float dist = length(p0 - p1);
+	// if (dist > params.boidSeparationRadius) return vec2(0,0);
+	// float scale = pow(clamp(1.0 - (dist / params.boidSeparationRadius), 0.0, 1.0), 3.0);
+	// vec2 dir = normalize(p0 - p1);
+	// return limit(dir, scale * params.boidMaxForce);
 }
-vec2 steeringCoherence(vec2 p0, vec2 p1) {
-	return vec2(0, 0);
+vec2 steeringCohesion(vec2 p0, vec2 p1, vec2 v0) {
+	vec2 desired = p1 - p0;
+	vec2 force = desired - v0;
+	return force * params.boidMaxForce / params.boidMaxSpeed;
 }
-vec2 steeringAlignment(vec2 p0, vec2 p1, vec2 v0, vec2 v1) {
-	return vec2(0, 0);
+vec2 steeringAlignment(vec2 v0, vec2 v1) {
+	vec2 desired = v1;
+	vec2 force = desired - v0;
+	return force * params.boidMaxForce / params.boidMaxSpeed;
+}
+vec2 steeringMaintainSpeed(vec2 v0) {
+	vec2 desired = normalize(v0) * params.boidMaxSpeed;
+	vec2 force = desired - v0;
+	return force * params.boidMaxForce / params.boidMaxSpeed;
+}
+vec2 steeringAvoid(vec2 v0, vec2 p0, vec2 p1, float r0, float r1, float c) {
+	if (dot(normalize(p0 - p1), normalize(v0)) > 0.0) return vec2(0,0);
+
+	float dist = length(p0 - p1);
+	if (dist > c) return vec2(0,0);
+
+	float scale = pow(clamp(1.0 - (dist / c), 0.0, 1.0), 1.0);
+
+	vec2 dir = normalize(p0 - p1);
+	vec2 desired = dot(v0, dir) * dir;
+	desired = normalize(v0 - desired) * params.boidMaxSpeed;
+	return desired;
 }
 
 /* Main */
@@ -94,9 +124,15 @@ void main() {
 
 	/* Steering behaviours */
 	vec2 separationForce = vec2(0,0);
-	vec2 coherenceForce = vec2(0,0);
+	vec2 cohesionForce = vec2(0,0);
 	vec2 alignmentForce = vec2(0,0);
+	vec2 avoidForce = vec2(0,0);
 	vec2 totalForce = vec2(0,0);
+
+	int cohesionCount = 0;
+	vec2 cohesionPosition = vec2(0,0);
+	int alignmentCount = 0;
+	vec2 alignmentVelocity = vec2(0,0);
 
     for (int i = 0; i < params.numBoids; i++)
     {
@@ -110,9 +146,18 @@ void main() {
         float r0 = boidRadius;
         float r1 = boidRadii.data[i];
 
-		separationForce += steeringSeparation(v0, p0, p1, r0, r1);
-		coherenceForce += steeringCoherence(p0, p1);
-		alignmentForce += steeringAlignment(p0, p1, v0, v1);
+		separationForce += steeringSeparation(v0, p0, p1, r0, r1, params.boidSeparationRadius);
+		
+		if (lengthSq(p0 - p1) < sq(params.boidCohesionRadius))
+		{
+			cohesionPosition += p1;
+			cohesionCount++;
+		}
+		if (lengthSq(p0 - p1) < sq(params.boidAlignmentRadius))
+		{
+			alignmentVelocity += v1;
+			alignmentCount++;
+		}
 
 		// Collide with other boids
 		{
@@ -131,6 +176,11 @@ void main() {
 		}
     }
 
+	if (cohesionCount > 0)
+		cohesionForce += steeringCohesion(boidPos, cohesionPosition / cohesionCount, boidVel);
+	if (alignmentCount > 0)
+		alignmentForce += steeringAlignment(boidVel, alignmentVelocity / alignmentCount);
+
 	// Collide with terrain
 	float terrainDist = sdf(boidPos);
 	{
@@ -143,12 +193,14 @@ void main() {
 		float r0 = boidRadius;
 		float r1 = 0.0;
 
+		avoidForce += steeringAvoid(v0, p0, p1, r0, r1, params.boidSdfAvoidDistance);
+
 		float separation = distance(p0, p1);
 		float r = r0 + r1;
 		float diff = separation - r;
 		if (diff <= 0.0) // hit
 		{
-			boidPos += diff * 0.5 * normalize(p1 - p0);
+			boidPos += diff * 1.0 * normalize(p1 - p0);
 
 			vec2 nv0 = v0;
 			nv0 += projectUonV(v1, p1 - p0);
@@ -157,12 +209,20 @@ void main() {
 		}
 	}
 
-	totalForce += separationForce;
-	totalForce += coherenceForce;
-	totalForce += alignmentForce;
+	// Accumulate the flocking forces.
+	totalForce += limit(separationForce, params.boidMaxForce / 3.0);
+	totalForce += limit(cohesionForce, params.boidMaxForce / 3.0);
+	totalForce += limit(alignmentForce, params.boidMaxForce / 3.0);
+
+	// Give a little force to maintain the max speed, to keep boids moving.
+	totalForce += steeringMaintainSpeed(boidVel) * 0.25;
+
+	// Avoid terrain.
+	totalForce += limit(avoidForce, params.boidMaxForce) * 2.0;
+
 	totalForce = limit(totalForce, params.boidMaxForce);
 
-	//boidVel += totalForce;
+	boidVel += totalForce;
 	boidVel = limit(boidVel, params.boidMaxSpeed);
 
 	boidPos = boidPos + boidVel;
@@ -170,5 +230,5 @@ void main() {
 	boidPositions.data[id] = encodePos(boidPos);
 	boidVelocities.data[id] = boidVel;
 
-	debugOut.data[id] = vec4(id, boidMaxSpeed, 0, 0);
+	debugOut.data[id] = vec4(id, cohesionForce.x, cohesionForce.y, 0);
 }
