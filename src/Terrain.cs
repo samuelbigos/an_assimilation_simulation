@@ -6,6 +6,12 @@ public partial class Terrain : Node
 {
 	[Export] private MeshInstance3D _terrainMesh;
 	[Export] private Texture2D _noiseTex;
+	[Export] private float _sdfDistMod = 10.0f;
+
+	public Rid DistanceField => _texture2Drd.TextureRdRid;
+	public Vector2I Size => _textureSize;
+	public Action DistanceFieldCreated;
+	public float SDFDistMod => _sdfDistMod;
 	
 	private Vector2I _workgroupSize = new Vector2I(32, 32);
 	private Vector2I _textureSize;
@@ -36,7 +42,7 @@ public partial class Terrain : Node
 		_textureSize = new Vector2I((int) _noiseTex.GetSize().X, (int) _noiseTex.GetSize().Y);
 		
 		_format = new RDTextureFormat();
-		_format.Format = RenderingDevice.DataFormat.R8G8B8A8Unorm;
+		_format.Format = RenderingDevice.DataFormat.R32G32B32A32Sfloat;
 		_format.Width = (uint) _textureSize.X;
 		_format.Height = (uint) _textureSize.Y;
 		_format.UsageBits = RenderingDevice.TextureUsageBits.SamplingBit |
@@ -73,11 +79,6 @@ public partial class Terrain : Node
 		ShaderMaterial material = _terrainMesh.GetActiveMaterial(0) as ShaderMaterial;
 		material?.SetShaderParameter("_sdf", _texture2Drd);
 		_terrainMesh.Scale = new Vector3(_textureSize.X, 1.0f, _textureSize.Y);
-	}
-
-	private void UpdateTerrainTexture(Texture2D tex)
-	{
-		
 	}
 
 	private void CreateSwapTextures()
@@ -119,7 +120,17 @@ public partial class Terrain : Node
 			}
 		}
 
-		Rid noiseTextureRid = _rd.TextureCreate(_format, new RDTextureView(), [noiseImage.GetData()]);
+		RDTextureFormat noiseFormat = new RDTextureFormat();
+		noiseFormat.Format = RenderingDevice.DataFormat.R8G8B8A8Unorm;
+		noiseFormat.Width = (uint) _textureSize.X;
+		noiseFormat.Height = (uint) _textureSize.Y;
+		noiseFormat.UsageBits = RenderingDevice.TextureUsageBits.SamplingBit |
+		                        RenderingDevice.TextureUsageBits.ColorAttachmentBit |
+		                        RenderingDevice.TextureUsageBits.StorageBit |
+		                        RenderingDevice.TextureUsageBits.CanUpdateBit |
+		                        RenderingDevice.TextureUsageBits.CanCopyToBit;
+		
+		Rid noiseTextureRid = _rd.TextureCreate(noiseFormat, new RDTextureView(), [noiseImage.GetData()]);
 		Rid noiseUniformRid = CreateUniform(noiseTextureRid, _voronoiSeedShader);
 		
 		ExecuteCompute(_voronoiSeedPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
@@ -170,8 +181,16 @@ public partial class Terrain : Node
 	private void GenerateDistanceField()
 	{
 		_currentSwap = (_currentSwap + 1) % 2;
+		
+		float[] constants = [_sdfDistMod, 0.0f, 0.0f, 0.0f];
+		byte[] constantsByte = new byte[constants.Length * 4];
+		Buffer.BlockCopy(constants, 0, constantsByte, 0, constantsByte.Length);
+		
 		ExecuteCompute(_distanceFieldPipeline, [_swapSets[_jumpFloodShader][InputSwapIndex], 
-			_swapSets[_jumpFloodShader][OutputSwapIndex]]);
+			_swapSets[_jumpFloodShader][OutputSwapIndex]], (computeList) =>
+		{
+			_rd.ComputeListSetPushConstant(computeList, constantsByte, (uint) constantsByte.Length);
+		});
 		
 		_texture2Drd.TextureRdRid = _swapTextures[OutputSwapIndex];
 		
@@ -214,6 +233,7 @@ public partial class Terrain : Node
 		if (!_generatedDistanceField)
 		{
 			GenerateDistanceField();
+			DistanceFieldCreated?.Invoke();
 		}
 	}
 }

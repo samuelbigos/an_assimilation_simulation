@@ -8,9 +8,9 @@ public partial class DebugDraw : Singleton<DebugDraw>
 {
     private static int v;
     private static int i;
-    private static Vector3[] _vertList = new Vector3[60000];
-    private static Color[] _colList = new Color[60000];
-    private static int[] _indexList = new int[150000];
+    private static Vector3[] _vertList = new Vector3[1024*1024];
+    private static Color[] _colList = new Color[1024*1024];
+    private static int[] _indexList = new int[1024*1024*2];
     private static MeshInstance3D _debugMesh;
     
     public override void _Ready()
