@@ -11,7 +11,7 @@
 
 [sub_resource type="Environment" id="Environment_cw83p"]
 background_mode = 1
-background_color = Color(0.843184, 0.843184, 0.843184, 1)
+background_color = Color(0.964742, 0.964742, 0.964742, 1)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_0oxxn"]
 size = Vector2(1, 1)

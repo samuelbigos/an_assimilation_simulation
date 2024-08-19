@@ -8,14 +8,20 @@ layout(set = 0, binding = 0, std430) restrict buffer Position {
 layout(set = 1, binding = 0, std430) restrict buffer Velocity {
 	vec2 data[];
 } boidVelocities;
-layout(set = 2, binding = 0, std430) restrict buffer BoidData {
-	float radius[];
+layout(set = 2, binding = 0, std430) restrict buffer Radius {
+	float data[];
 } boidRadii;
-layout(set = 3, binding = 0, std430) restrict buffer DebugOut {
+layout(set = 3, binding = 0, std430) restrict buffer Team {
+	int data[];
+} boidTeam;
+layout(set = 4, binding = 0, std430) restrict buffer Neighbours {
+	float data[];
+} boidNeighbours;
+layout(set = 5, binding = 0, std430) restrict buffer DebugOut {
 	vec4 data[];
 } debugOut;
 
-layout(set = 4, binding = 0) uniform sampler2D _distanceField;
+layout(set = 6, binding = 0) uniform sampler2D _distanceField;
 
 layout(push_constant, std430) uniform Params {
 	float numBoids;	
@@ -134,10 +140,9 @@ void main() {
 	int alignmentCount = 0;
 	vec2 alignmentVelocity = vec2(0,0);
 
-    for (int i = 0; i < params.numBoids; i++)
-    {
-        if (i == id)
-            continue;
+	// Behaviours with other boids.
+    for (int i = 0; i < params.numBoids; i++) {
+        if (i == id) continue;
 
         vec2 p0 = boidPos;
         vec2 p1 = decodePos(boidPositions.data[i]);
@@ -148,31 +153,27 @@ void main() {
 
 		separationForce += steeringSeparation(v0, p0, p1, r0, r1, params.boidSeparationRadius);
 		
-		if (lengthSq(p0 - p1) < sq(params.boidCohesionRadius))
-		{
+		if (lengthSq(p0 - p1) < sq(params.boidCohesionRadius)) {
 			cohesionPosition += p1;
 			cohesionCount++;
 		}
-		if (lengthSq(p0 - p1) < sq(params.boidAlignmentRadius))
-		{
+		if (lengthSq(p0 - p1) < sq(params.boidAlignmentRadius)) {
 			alignmentVelocity += v1;
 			alignmentCount++;
 		}
 
 		// Collide with other boids
+		float separation = distance(p0, p1);
+		float r = r0 + r1;
+		float diff = separation - r;
+		if (diff <= 0.0)
 		{
-			float separation = distance(p0, p1);
-			float r = r0 + r1;
-			float diff = separation - r;
-			if (diff <= 0.0)
-			{
-				boidPos += diff * 0.5 * normalize(p1 - p0);
+			boidPos += diff * 0.5 * normalize(p1 - p0);
 
-				vec2 nv0 = v0;
-				nv0 += projectUonV(v1, p1 - p0);
-				nv0 -= projectUonV(v0, p0 - p1);
-				boidVel = nv0 * 1.0;
-			}
+			vec2 nv0 = v0;
+			nv0 += projectUonV(v1, p1 - p0);
+			nv0 -= projectUonV(v0, p0 - p1);
+			boidVel = nv0 * 1.0;
 		}
     }
 
@@ -183,30 +184,46 @@ void main() {
 
 	// Collide with terrain
 	float terrainDist = sdf(boidPos);
-	{
-		vec2 toSurface = -calcNormal(boidPos);
+	vec2 toSurface = -calcNormal(boidPos);
 
-		vec2 p0 = boidPos;
-		vec2 p1 = boidPos + toSurface * terrainDist;
-		vec2 v0 = boidVel;
-		vec2 v1 = vec2(0.0, 0.0);
-		float r0 = boidRadius;
-		float r1 = 0.0;
+	vec2 p0 = boidPos;
+	vec2 p1 = boidPos + toSurface * terrainDist;
+	vec2 v0 = boidVel;
+	vec2 v1 = vec2(0.0, 0.0);
+	float r0 = boidRadius;
+	float r1 = 0.0;
 
-		avoidForce += steeringAvoid(v0, p0, p1, r0, r1, params.boidSdfAvoidDistance);
+	avoidForce += steeringAvoid(v0, p0, p1, r0, r1, params.boidSdfAvoidDistance);
 
-		float separation = distance(p0, p1);
-		float r = r0 + r1;
-		float diff = separation - r;
-		if (diff <= 0.0) // hit
-		{
-			boidPos += diff * 1.0 * normalize(p1 - p0);
+	float separation = distance(p0, p1);
+	float r = r0 + r1;
+	float diff = separation - r;
+	if (diff <= 0.0) {
+		boidPos += diff * 1.0 * normalize(p1 - p0);
 
-			vec2 nv0 = v0;
-			nv0 += projectUonV(v1, p1 - p0);
-			nv0 -= projectUonV(v0, p0 - p1);
-			boidVel = nv0 * 1.0;
+		vec2 nv0 = v0;
+		nv0 += projectUonV(v1, p1 - p0);
+		nv0 -= projectUonV(v0, p0 - p1);
+		boidVel = nv0 * 1.0;
+	}
+
+	// Change alignment.
+	int a0 = 0;
+	int a1 = 0;
+	for (int i = 0; i < params.numBoids; i++) {
+		if (i == id) continue;
+		if (lengthSq(boidPos - decodePos(boidPositions.data[i])) > sq(params.boidCohesionRadius)) continue;		
+		if (boidTeam.data[i] == 1) {
+			a1++;
+		} else {
+			a0++;
 		}
+	}
+	if (boidTeam.data[id] == 0 && a1 > a0) {
+		boidTeam.data[id] = 1;
+	}
+	else if (boidTeam.data[id] == 1 && a0 > a1) {
+		boidTeam.data[id] = 0;
 	}
 
 	// Accumulate the flocking forces.
@@ -229,6 +246,7 @@ void main() {
 
 	boidPositions.data[id] = encodePos(boidPos);
 	boidVelocities.data[id] = boidVel;
+	boidNeighbours.data[id] = cohesionCount;
 
-	debugOut.data[id] = vec4(id, cohesionForce.x, cohesionForce.y, 0);
+	//debugOut.data[id] = vec4(id, boidAlignment.data[id], cohesionForce.y, 0);
 }

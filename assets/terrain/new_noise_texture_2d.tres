@@ -2,6 +2,7 @@
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_ysj8h"]
 noise_type = 2
+seed = 1
 
 [resource]
 width = 1024

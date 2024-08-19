@@ -10,7 +10,6 @@ void vertex() {
 void fragment() {
 	vec4 colour = texture(_sdf, UV);
 	float value = step(0.001f, colour.r);
-	ALBEDO = vec3(value);
-	//ALBEDO = colour.rgb;
-	ALPHA = 1.0f;
+	ALBEDO = vec3(0.05, 0.05, 0.05);
+	ALPHA = 1.0 - value;
 }

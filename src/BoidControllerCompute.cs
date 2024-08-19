@@ -15,19 +15,11 @@ public partial class BoidControllerCompute : Node
 	[Export] private float _boidAlignmentRadius = 15.0f;
 	[Export] private float _boidSdfAvoidDistance = 10.0f;
 
-	private struct Boid
-	{
-		public Vector2 Position;
-		public Vector2 Velocity;
-		public float Radius;
-	}
-	private List<Boid> _boids = new List<Boid>();
-
 	private bool _readyToProcess = false;
 	private Random _rng = new Random();
 	
 	// Boid buffers
-	private const int MAX_BOIDS = 4096;
+	private const int MAX_BOIDS = 2048;
 	
 	// Compute
 	private RenderingDevice _rd;
@@ -35,14 +27,27 @@ public partial class BoidControllerCompute : Node
 	private Rid _shader;
 	private Rid _pipeline;
 
-	private Rid _positionBuffer;
-	private Rid _positionSet;
-	private Rid _velocityBuffer;
-	private Rid _velocitySet;
-	private Rid _radiiBuffer;
-	private Rid _radiiSet;
-	private Rid _debugOutBuffer;
-	private Rid _debugOutSet;
+	enum Buffers
+	{
+		Position,
+		Velocity,
+		Radius,
+		Team,
+		Neighbours,
+		DebugOut,
+		COUNT
+	}
+	private int[] _bufferSizes = new[]
+	{
+		8,
+		8,
+		4,
+		4,
+		4,
+		16
+	};
+	private Rid[] _buffers = new Rid[(int) Buffers.COUNT];
+	private Rid[] _bufferSets = new Rid[(int) Buffers.COUNT];
 	private Rid _distanceFieldSet;
 	
 	public override void _Ready()
@@ -54,13 +59,6 @@ public partial class BoidControllerCompute : Node
 	
 	private void DistanceFieldCreated()
 	{
-		_boids.Add(new Boid()
-		{
-			Position = Vector2.Zero,
-			Velocity = Vector2.Zero,
-			Radius = 5.0f,
-		});
-		
 		_rd = RenderingServer.GetRenderingDevice();
 		{
 			RDShaderFile shaderFile = GD.Load<RDShaderFile>("res://assets/boid_compute.glsl");
@@ -69,50 +67,45 @@ public partial class BoidControllerCompute : Node
 			_pipeline = _rd.ComputePipelineCreate(_shader);
 		}
 
-		byte[] positions = new byte[MAX_BOIDS * 8];
-		Span<Vector2> positionsSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(positions, 0, MAX_BOIDS * 8));
-		byte[] velocities = new byte[MAX_BOIDS * 8];
-		Span<Vector2> velocitiesSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(velocities, 0, MAX_BOIDS * 8));
-		byte[] radii = new byte[MAX_BOIDS * 4];
-		Span<float> radiiSpan = MemoryMarshal.Cast<byte, float>(new Span<byte>(radii, 0, MAX_BOIDS * 4));
+		// Create the compute buffers.
+		List<byte[]> buffers = new List<byte[]>();
+		for (int i = 0; i < (int) Buffers.COUNT; i++) {
+			buffers.Add(new byte[MAX_BOIDS * _bufferSizes[i]]);
+		}
 		
-		float sqrtSize = Mathf.Sqrt(MAX_BOIDS);
-		float spacing = _boidDefaultRadius * 2.5f;
+		// Populate the compute buffers.
+		Span<Vector2> positionsSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(buffers[(int) Buffers.Position], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Position]));
+		Span<Vector2> velocitiesSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(buffers[(int) Buffers.Velocity], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Velocity]));
+		Span<float> radiiSpan = MemoryMarshal.Cast<byte, float>(new Span<byte>(buffers[(int) Buffers.Radius], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Radius]));
+		Span<int> teamSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(buffers[(int) Buffers.Team], 0, MAX_BOIDS * _bufferSizes[(int) Buffers.Team]));
+		
+		// float sqrtSize = Mathf.Sqrt(MAX_BOIDS);
+		// float spacing = _boidDefaultRadius * 2.5f;
 		List<Vector2I> safePositions = new List<Vector2I>(_terrain.SafePositions);
 		for (int i = 0; i < MAX_BOIDS; i++)
 		{
 			// positionsSpan[i] = new Vector2(
 			// 	spacing * (i % (int)sqrtSize - sqrtSize / 2), 
 			// 	spacing * (i / (int)sqrtSize - sqrtSize / 2));
-			
-			velocitiesSpan[i] = new Vector2(1.0f, 1.0f) * 0.01f;
-
 			int safeIndex = _rng.Next() % safePositions.Count;
 			// Give a little bump in a random direction to prevent two boids spawning at the same position and exploding the compute shader (I think).
 			positionsSpan[i] = safePositions[safeIndex] + new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
-			//safePositions.RemoveAt(safeIndex);
-			
-			//velocitiesSpan[i] = new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
-			
+			velocitiesSpan[i] = new Vector2((float) _rng.NextDouble(), (float) _rng.NextDouble()) * 0.1f;
 			radiiSpan[i] = _boidDefaultRadius;
+			teamSpan[i] = _rng.Next() % 2;
+		}
+		
+		// Layout the compute buffers.
+		for (int i = 0; i < (int) Buffers.COUNT; i++) {
+			_buffers[i] = _rd.StorageBufferCreate((uint) (MAX_BOIDS * _bufferSizes[i]), buffers[i]);
+			_bufferSets[i] = CreateUniform(_buffers[i], _shader, RenderingDevice.UniformType.StorageBuffer, (uint)i);
 		}
 
-		// positionsSpan[0] = new Vector2(-20.0f, 50.0f);
-		// positionsSpan[1] = new Vector2(20.0f, 50.0f);
-		// velocitiesSpan[0] = new Vector2(0.1f, 0.0f);
-		// velocitiesSpan[1] = new Vector2(-0.1f, 0.0f);
+		// Clear the buffers we didn't populate.
+		_rd.BufferClear(_buffers[(int) Buffers.DebugOut], 0, (uint) _bufferSizes[(int) Buffers.DebugOut]);
+		_rd.BufferClear(_buffers[(int) Buffers.Neighbours], 0, (uint) _bufferSizes[(int) Buffers.Neighbours]);
 		
-		// Layouts
-		_positionBuffer = _rd.StorageBufferCreate(MAX_BOIDS * 8, positions);
-		_velocityBuffer = _rd.StorageBufferCreate(MAX_BOIDS * 8, velocities);
-		_radiiBuffer = _rd.StorageBufferCreate(MAX_BOIDS * 4, radii);
-		_debugOutBuffer = _rd.StorageBufferCreate(MAX_BOIDS * 16);
-		_rd.BufferClear(_debugOutBuffer, 0, MAX_BOIDS * 16);
-		_positionSet = CreateUniform(_positionBuffer, _shader, RenderingDevice.UniformType.StorageBuffer, 0);
-		_velocitySet = CreateUniform(_velocityBuffer, _shader, RenderingDevice.UniformType.StorageBuffer, 1);
-		_radiiSet = CreateUniform(_radiiBuffer, _shader, RenderingDevice.UniformType.StorageBuffer, 2);
-		_debugOutSet = CreateUniform(_debugOutBuffer, _shader, RenderingDevice.UniformType.StorageBuffer, 3);
-		
+		// Distance Field Layout
 		RDUniform uniform = new RDUniform();
 		uniform.UniformType = RenderingDevice.UniformType.SamplerWithTexture;
 		uniform.Binding = 0;
@@ -120,33 +113,37 @@ public partial class BoidControllerCompute : Node
 		sampler.MagFilter = RenderingDevice.SamplerFilter.Linear;
 		uniform.AddId(_rd.SamplerCreate(sampler));
 		uniform.AddId(_terrain.DistanceField);
-		_distanceFieldSet = _rd.UniformSetCreate([uniform], _shader, 4);
+		_distanceFieldSet = _rd.UniformSetCreate([uniform], _shader, (uint) Buffers.COUNT);
 		Utils.Assert(_distanceFieldSet.IsValid, "Failed to create uniform.");
 		
 		_readyToProcess = true;
 	}
 
-	private int steps = 0;
 	public override void _Process(double delta)
 	{
 		base._Process(delta);
 
 		if (!_readyToProcess) return;
-		//if (steps > 0) return;
 		
 		ExecuteCompute(_pipeline);
 		
 		// Copy boid buffers to CPU for rendering.
-		byte[] positions = _rd.BufferGetData(_positionBuffer, 0, MAX_BOIDS * 8);
+		byte[] positions = _rd.BufferGetData(_buffers[(int) Buffers.Position], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.Position]));
 		Span<Vector2> positionsSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(positions, 0, positions.Length));
 		
-		byte[] velocities = _rd.BufferGetData(_velocityBuffer, 0, MAX_BOIDS * 8);
+		byte[] velocities = _rd.BufferGetData(_buffers[(int) Buffers.Velocity], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.Velocity]));
 		Span<Vector2> velocitiesSpan = MemoryMarshal.Cast<byte, Vector2>(new Span<byte>(velocities, 0, velocities.Length));
 		
-		byte[] radii = _rd.BufferGetData(_radiiBuffer, 0, MAX_BOIDS * 4);
+		byte[] radii = _rd.BufferGetData(_buffers[(int) Buffers.Radius], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.Radius]));
 		Span<float> radiiSpan = MemoryMarshal.Cast<byte, float>(new Span<byte>(radii, 0, radii.Length));
 		
-		byte[] debugOut = _rd.BufferGetData(_debugOutBuffer, 0, MAX_BOIDS * 16);
+		byte[] team = _rd.BufferGetData(_buffers[(int) Buffers.Team], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.Team]));
+		Span<int> teamSpan = MemoryMarshal.Cast<byte, int>(new Span<byte>(team, 0, team.Length));
+		
+		byte[] neighbours = _rd.BufferGetData(_buffers[(int) Buffers.Neighbours], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.Neighbours]));
+		Span<float> neightboursSpan = MemoryMarshal.Cast<byte, float>(new Span<byte>(neighbours, 0, team.Length));
+		
+		byte[] debugOut = _rd.BufferGetData(_buffers[(int) Buffers.DebugOut], 0, (uint) (MAX_BOIDS * _bufferSizes[(int) Buffers.DebugOut]));
 		Span<Vector4> debugOutSpan = MemoryMarshal.Cast<byte, Vector4>(new Span<byte>(debugOut, 0, debugOut.Length));
 
 		for (int i = 0; i < positionsSpan.Length; i++)
@@ -158,7 +155,11 @@ public partial class BoidControllerCompute : Node
 			Vector3 boidPos = positionsSpan[i].To3D();
 			Vector3 forward = velocitiesSpan[i].To3D().Normalized();
 			Vector3 right = new(forward.Z, 0.0f, -forward.X);
-			Color col = Colors.Blue;
+			Color col = Colors.Green;
+			// if (neightboursSpan[i] > 4) col = Colors.Yellow;
+			// if (neightboursSpan[i] > 8) col = Colors.Orange;
+			// if (neightboursSpan[i] > 12) col = Colors.Red;
+			if (teamSpan[i] == 1) col = Colors.Red;
 			float size = radiiSpan[i];
 			Vector3 p0 = boidPos + forward * -size * 0.33f + right * size * 0.5f;
 			Vector3 p1 = boidPos + forward * size * 0.66f;
@@ -168,20 +169,18 @@ public partial class BoidControllerCompute : Node
 			DebugDraw.Line(p1, p2, col);
 			DebugDraw.Line(p2, p0, col);
 		}
-
-		steps++;
 	}
 	
 	private void ExecuteCompute(Rid pipeline)
 	{
 		long computeList = _rd.ComputeListBegin();
 		_rd.ComputeListBindComputePipeline(computeList, pipeline);
-		
-		_rd.ComputeListBindUniformSet(computeList, _positionSet, 0);
-		_rd.ComputeListBindUniformSet(computeList, _velocitySet, 1);
-		_rd.ComputeListBindUniformSet(computeList, _radiiSet, 2);
-		_rd.ComputeListBindUniformSet(computeList, _debugOutSet, 3);
-		_rd.ComputeListBindUniformSet(computeList, _distanceFieldSet, 4);
+
+		for (uint i = 0; i < (int) Buffers.COUNT; i++)
+		{
+			_rd.ComputeListBindUniformSet(computeList, _bufferSets[i], i);
+		}
+		_rd.ComputeListBindUniformSet(computeList, _distanceFieldSet, (uint) Buffers.COUNT);
 		
 		// Ordering must be the same as defined in the compute shader.
 		List<float> constants = [ MAX_BOIDS, 
