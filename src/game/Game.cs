@@ -10,6 +10,7 @@ public partial class Game : Singleton<Game>
 	private bool _gameOver = false;
 
 	public static bool SimulationMode = false;
+	public static bool AudioEnabled = true;
 
 	public override void _Ready()
 	{

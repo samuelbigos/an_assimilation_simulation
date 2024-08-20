@@ -199,6 +199,8 @@ public partial class DebugImGui : Saveable
     
     private void _OnImGuiLayoutGameSettings()
     {
+        ImGui.Checkbox("Audio Enabled", ref Game.AudioEnabled);
+        ImGui.Spacing();
         bool changed = false;
         ImGui.Text("Camera Mode:");
         ImGui.RadioButton("Auto", ref _cameraMode, 0);
@@ -227,13 +229,6 @@ public partial class DebugImGui : Saveable
         ImGui.TextWrapped("At the top of the screen you can enable/disable various pages, including 'game settings' which provides various options to alter gameplay.");
         ImGui.Spacing();
         ImGui.Spacing();
-        if (ImGui.Button("Begin"))
-        {
-            Game.Instance.Unpause();
-            SetCustomWindowEnabled("help", false);
-        }
-        ImGui.Spacing();
-        ImGui.Spacing();
         ImGui.Text("---------------------------------------------------------------");
         ImGui.TextWrapped("Simulation mode disables game mechanics and randomises critter allegiances, so you can sit back and watch them potter about assimilating each other." +
                           "Simulation parameters and visualisations can be adjusted using the menus at the top of the screen.");
@@ -244,6 +239,12 @@ public partial class DebugImGui : Saveable
         {
             Game.SimulationMode = true;
             GetTree().ReloadCurrentScene();
+        }
+        ImGui.Text("---------------------------------------------------------------");
+        if (ImGui.Button("Begin"))
+        {
+            Game.Instance.Unpause();
+            SetCustomWindowEnabled("help", false);
         }
     }
 

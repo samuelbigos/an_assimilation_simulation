@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
+[gd_scene load_steps=14 format=3 uid="uid://vikkfjvfvdfv"]
 
 [ext_resource type="Script" path="res://src/game/Game.cs" id="1_2ms8f"]
 [ext_resource type="Script" path="res://src/game/GameCamera.cs" id="2_5ghvg"]
@@ -7,6 +7,8 @@
 [ext_resource type="Shader" path="res://assets/terrain.gdshader" id="7_wult2"]
 [ext_resource type="Script" path="res://src/debug/DebugImGui.cs" id="8_cd8si"]
 [ext_resource type="Script" path="res://src/boids/BoidControllerCompute.cs" id="8_f8mes"]
+[ext_resource type="AudioStream" uid="uid://xvgt2q36l8ra" path="res://assets/sfx/convert_ally.wav" id="9_t77uj"]
+[ext_resource type="AudioStream" uid="uid://8skh0g7qc3kv" path="res://assets/sfx/convert_enemy.wav" id="10_bk2j8"]
 
 [sub_resource type="Environment" id="Environment_cw83p"]
 background_mode = 1
@@ -53,11 +55,13 @@ _sdfDistMod = 50.0
 mesh = SubResource("PlaneMesh_0oxxn")
 surface_material_override/0 = SubResource("ShaderMaterial_35xi0")
 
-[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain", "_cam", "_game")]
+[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain", "_cam", "_game", "_convertAllySfx", "_convertEnemySfx")]
 script = ExtResource("8_f8mes")
 _terrain = NodePath("../Terrain")
 _cam = NodePath("../GameCamera")
 _game = NodePath("..")
+_convertAllySfx = NodePath("../ConvertAllySfx")
+_convertEnemySfx = NodePath("../ConvertEnemySfx")
 _boidMaxSpeed = 0.33
 _boidMaxForce = 0.025
 _boidDefaultRadius = 2.5
@@ -70,3 +74,13 @@ _boidMouseInfluenceRadius = 66.0
 
 [node name="DebugImGui" type="Node" parent="."]
 script = ExtResource("8_cd8si")
+
+[node name="ConvertAllySfx" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("9_t77uj")
+volume_db = -5.0
+
+[node name="ConvertEnemySfx" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("10_bk2j8")
+
+[node name="AudioListener3D" type="AudioListener3D" parent="."]
+current = true

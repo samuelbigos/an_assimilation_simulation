@@ -10,7 +10,9 @@ public partial class BoidControllerCompute : Node
 	[Export] private Terrain _terrain;
 	[Export] private GameCamera _cam;
 	[Export] private Game _game;
-
+	[Export] private AudioStreamPlayer3D _convertAllySfx;
+	[Export] private AudioStreamPlayer3D _convertEnemySfx;
+	
 	[Export] private int _playerStartBoids = 32;
 	
 	[Export] private float _boidMaxSpeed = 1.0f;
@@ -65,6 +67,7 @@ public partial class BoidControllerCompute : Node
 
 	private bool _assimilateAll0;
 	private bool _assimilateAll1;
+	private int _prevNumAllies;
 	
 	public override void _Ready()
 	{
@@ -181,6 +184,7 @@ public partial class BoidControllerCompute : Node
 			}
 		}
 
+		_prevNumAllies = _playerStartBoids;
 		for (int i = MAX_BOIDS - _playerStartBoids; i < MAX_BOIDS; i++)
 		{
 			int safeIndex = _rng.Next() % _terrain.PlayerSpawn.Count;
@@ -282,6 +286,18 @@ public partial class BoidControllerCompute : Node
 			if (teamSpan[i] == 0) playerBoids++;
 			if (teamSpan[i] == 1) enemyBoids++;
 		}
+		if (!Game.SimulationMode && Game.AudioEnabled)
+		{
+			if (playerBoids > _prevNumAllies)
+			{
+				_convertAllySfx.Play();
+			}
+			else if(playerBoids < _prevNumAllies)
+			{
+				_convertEnemySfx.Play();
+			}
+		}
+		_prevNumAllies = playerBoids;
 		
 		// Update the camera to contain all our boids.
 		_cam.SetMinMax(min, max);

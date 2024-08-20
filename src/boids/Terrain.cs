@@ -6,6 +6,7 @@ using ImGuiNET;
 
 public partial class Terrain : Node
 {
+	[Export] private Texture2D _terrainTexture;
 	[Export] private MeshInstance3D _terrainMesh;
 	[Export] private float _sdfDistMod = 10.0f;
 	[Export] private Vector2I _defaultSize = new Vector2I(1024, 1024);
@@ -21,7 +22,7 @@ public partial class Terrain : Node
 	
 	private Vector2I _workgroupSize = new Vector2I(32, 32);
 	private Vector2I _textureSize;
-	private NoiseTexture2D _noiseTex;
+	private Texture2D _theTexture;
 
 	private Rid _voronoiSeedShader;
 	private Rid _jumpFloodShader;
@@ -52,26 +53,33 @@ public partial class Terrain : Node
 
 	public override void _Ready()
 	{
-		_noiseTex = new NoiseTexture2D();
-
-		_noiseTex.Width = _defaultSize.X;
-		_noiseTex.Height = _defaultSize.Y;
-		if (SizeOverride != -1)
+		NoiseTexture2D noiseTex = new NoiseTexture2D();
+		if (_terrainTexture == null)
 		{
-			_noiseTex.Width = SizeOverride;
-			_noiseTex.Height = SizeOverride;
+			noiseTex.Width = _defaultSize.X;
+			noiseTex.Height = _defaultSize.Y;
+			if (SizeOverride != -1)
+			{
+				noiseTex.Width = SizeOverride;
+				noiseTex.Height = SizeOverride;
+			}
+			noiseTex.GenerateMipmaps = false;
+			noiseTex.Seamless = true;
+			noiseTex.Normalize = true;
+			FastNoiseLite noise = new FastNoiseLite();
+			noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Cellular;
+			noise.Seed = _rng.Next();
+			noise.Frequency = 0.01f;
+			noiseTex.Noise = noise;
+			_theTexture = noiseTex;
 		}
-		_noiseTex.GenerateMipmaps = false;
-		_noiseTex.Seamless = true;
-		_noiseTex.Normalize = true;
-		FastNoiseLite noise = new FastNoiseLite();
-		noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Cellular;
-		noise.Seed = _rng.Next();
-		noise.Frequency = 0.01f;
-		_noiseTex.Noise = noise;
+		else
+		{
+			_theTexture = _terrainTexture;
+		}
 			
 		_texture2Drd = new Texture2Drd();
-		_textureSize = new Vector2I(_noiseTex.Width, _noiseTex.Height);
+		_textureSize = new Vector2I((int) _theTexture.GetSize().X, (int) _theTexture.GetSize().Y);
 		
 		_format = new RDTextureFormat();
 		_format.Format = RenderingDevice.DataFormat.R32G32B32A32Sfloat;
@@ -186,7 +194,7 @@ public partial class Terrain : Node
 
 	private void GenerateVoronoiSeed()
 	{
-		Image noiseTexImage = _noiseTex.GetImage();
+		Image noiseTexImage = _theTexture.GetImage();
 		Image noiseImage = Image.CreateEmpty(_textureSize.X, _textureSize.Y, false, Image.Format.Rgba8);
 		for (int x = 0; x < _textureSize.X; x++) {
 			for (int y = 0; y < _textureSize.Y; y++) {
