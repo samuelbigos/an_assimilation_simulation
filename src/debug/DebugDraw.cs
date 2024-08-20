@@ -3,7 +3,6 @@ using System.Diagnostics;
 using Godot;
 using Array = Godot.Collections.Array;
 
-[Tool]
 public partial class DebugDraw : Singleton<DebugDraw>
 {
     private static int v;
@@ -15,6 +14,13 @@ public partial class DebugDraw : Singleton<DebugDraw>
     
     public override void _Ready()
     {
+    }
+
+    public override void _ExitTree()
+    {
+        base._ExitTree();
+
+        _debugMesh = null;
     }
 
     public override void _Process(double delta)

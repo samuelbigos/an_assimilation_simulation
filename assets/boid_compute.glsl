@@ -39,6 +39,8 @@ layout(push_constant, std430) uniform Params {
 	float mousePosX;
 	float mousePosY;
 	float boidMouseInfluenceRadius;
+	float assimilateAll0;
+	float assimilateAll1;
 } params;
 
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
@@ -80,6 +82,10 @@ vec2 encodePos(vec2 p) {
 }
 vec2 decodePos(vec2 p) {
 	return p + vec2(params.imageSizeX, params.imageSizeY) * 0.5;
+}
+vec2 loopPosition(vec2 p) {
+	return vec2(mod(p.x + params.imageSizeX, params.imageSizeX),
+				mod(p.y + params.imageSizeY, params.imageSizeY));
 }
 
 /* Steering behaviours */
@@ -156,7 +162,7 @@ void main() {
         if (i == id) continue;
 
         vec2 p0 = boidPos;
-        vec2 p1 = decodePos(boidPositions.data[i]);
+        vec2 p1 = loopPosition(decodePos(boidPositions.data[i]));
         vec2 v0 = boidVel;
         vec2 v1 = boidVelocities.data[i];
         float r0 = boidRadius;
@@ -227,7 +233,7 @@ void main() {
 	int a1 = 0;
 	for (int i = 0; i < params.numBoids; i++) {
 		if (i == id) continue;
-		if (lengthSq(boidPos - decodePos(boidPositions.data[i])) > sq(params.boidTeamInfluenceRadius)) continue;		
+		if (lengthSq(boidPos - loopPosition(decodePos(boidPositions.data[i]))) > sq(params.boidTeamInfluenceRadius)) continue;		
 		if (boidTeam.data[i] == 1) {
 			a1++;
 		} else {
@@ -240,6 +246,9 @@ void main() {
 	else if (boidTeam.data[id] == 1 && a0 > a1) {
 		boidTeam.data[id] = 0;
 	}
+
+	if (params.assimilateAll0 > 0.5) boidTeam.data[id] = 0;
+	if (params.assimilateAll1 > 0.5) boidTeam.data[id] = 1;
 
 	// Seek mouse.
 	float mouseBoost = 1.0;
@@ -276,11 +285,11 @@ void main() {
 	boidVel += totalForce;
 	boidVel = limit(boidVel, params.boidMaxSpeed * mouseBoost);
 
-	boidPos = boidPos + boidVel;
+	boidPos = loopPosition(boidPos + boidVel);	
 
+	// Write new data.
 	boidPositions.data[id] = encodePos(boidPos);
 	boidVelocities.data[id] = boidVel;
 	boidNeighbours.data[id] = cohesionCount;
-
 	//debugOut.data[id] = vec4(id, boidAlignment.data[id], cohesionForce.y, 0);
 }

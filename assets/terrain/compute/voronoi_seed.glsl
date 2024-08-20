@@ -22,7 +22,8 @@ void main()
 	float borderSize = 10.0;
 	bool isBorder = uv.x >= imageSize.x - borderSize || uv.y >= imageSize.y - borderSize 
 		|| uv.x <= borderSize || uv.y <= borderSize;
-		
+
+	isBorder = false;
 	if (val > 0.5 || isBorder)
 	{
 		vec4 col = vec4(float(uv.x) / float(imageSize.x),  float(uv.y) / float(imageSize.y), 0.0, 1.0);

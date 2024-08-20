@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://5a87kqcpxqg8"]
-
-[ext_resource type="Script" path="res://src/Player.cs" id="1_fna7a"]
-
-[node name="Player" type="Area3D"]
-script = ExtResource("1_fna7a")
-_steeringRadius = 1.0

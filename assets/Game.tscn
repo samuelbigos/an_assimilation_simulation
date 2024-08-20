@@ -1,13 +1,12 @@
-[gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
+[gd_scene load_steps=11 format=3 uid="uid://vikkfjvfvdfv"]
 
-[ext_resource type="Script" path="res://src/Game.cs" id="1_2ms8f"]
-[ext_resource type="Script" path="res://src/GameCamera.cs" id="2_5ghvg"]
-[ext_resource type="Script" path="res://src/steering/SteeringManager.cs" id="2_wefgy"]
+[ext_resource type="Script" path="res://src/game/Game.cs" id="1_2ms8f"]
+[ext_resource type="Script" path="res://src/game/GameCamera.cs" id="2_5ghvg"]
 [ext_resource type="Script" path="res://src/debug/DebugDraw.cs" id="4_r3dle"]
-[ext_resource type="Script" path="res://src/Terrain.cs" id="7_ignms"]
+[ext_resource type="Script" path="res://src/boids/Terrain.cs" id="7_ignms"]
 [ext_resource type="Shader" path="res://assets/terrain.gdshader" id="7_wult2"]
-[ext_resource type="Script" path="res://src/BoidControllerCompute.cs" id="8_f8mes"]
-[ext_resource type="Texture2D" uid="uid://brrfc36wgotqo" path="res://assets/terrain/new_noise_texture_2d.tres" id="8_l2x7m"]
+[ext_resource type="Script" path="res://src/debug/DebugImGui.cs" id="8_cd8si"]
+[ext_resource type="Script" path="res://src/boids/BoidControllerCompute.cs" id="8_f8mes"]
 
 [sub_resource type="Environment" id="Environment_cw83p"]
 background_mode = 1
@@ -33,10 +32,6 @@ far = 10.0
 script = ExtResource("2_5ghvg")
 _zoomSpeed = 0.05
 
-[node name="SteeringManager" type="Node" parent="." node_paths=PackedStringArray("_cam")]
-script = ExtResource("2_wefgy")
-_cam = NodePath("../GameCamera")
-
 [node name="DebugDraw" type="Node" parent="."]
 script = ExtResource("4_r3dle")
 
@@ -44,22 +39,25 @@ script = ExtResource("4_r3dle")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 script = ExtResource("7_ignms")
 _terrainMesh = NodePath("MeshInstance3D")
-_noiseTex = ExtResource("8_l2x7m")
 _sdfDistMod = 50.0
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Terrain"]
 mesh = SubResource("PlaneMesh_0oxxn")
 surface_material_override/0 = SubResource("ShaderMaterial_35xi0")
 
-[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain", "_cam")]
+[node name="BoidControllerCompute" type="Node" parent="." node_paths=PackedStringArray("_terrain", "_cam", "_game")]
 script = ExtResource("8_f8mes")
 _terrain = NodePath("../Terrain")
 _cam = NodePath("../GameCamera")
-_boidMaxSpeed = 0.5
-_boidMaxForce = 0.05
+_game = NodePath("..")
+_boidMaxSpeed = 0.33
+_boidMaxForce = 0.025
 _boidDefaultRadius = 2.5
 _boidSeparationRadius = 10.0
 _boidAlignmentRadius = 10.0
 _boidSdfAvoidDistance = 25.0
 _boidTeamInfluenceRadius = 25.0
 _boidMouseInfluenceRadius = 66.0
+
+[node name="DebugImGui" type="Node" parent="."]
+script = ExtResource("8_cd8si")
