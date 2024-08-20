@@ -68,6 +68,7 @@ public partial class BoidControllerCompute : Node
 	private bool _assimilateAll0;
 	private bool _assimilateAll1;
 	private int _prevNumAllies;
+	private float _mousePressTimer;
 	
 	public override void _Ready()
 	{
@@ -298,6 +299,29 @@ public partial class BoidControllerCompute : Node
 			}
 		}
 		_prevNumAllies = playerBoids;
+
+		// Draw the mouse influence circles.
+		if (!Game.SimulationMode)
+		{
+			if (Input.IsActionJustPressed("seek")) _mousePressTimer = 0.0f;
+			if (Input.IsActionPressed("seek"))
+			{
+				_mousePressTimer += (float)delta;
+				Vector3 mouseWorld = _cam.ProjectPosition(GetViewport().GetMousePosition(), 0.0f);
+				mouseWorld.Y = 0.0f;
+				float duration = 1.0f;
+				int numCircles = 3;
+				float maxRadius = _boidMouseInfluenceRadius * 0.125f;
+				for (int i = 0; i < numCircles; i++)
+				{
+					float t = ((_mousePressTimer + (duration / numCircles) * i) % duration) / duration;
+					float radius = (1.0f - Mathf.Pow(t, 1.5f)) * maxRadius;
+					Color col1 = new Color("#345644");
+					Color col2 = new Color("#ceb57b");
+					DebugDraw.Circle(mouseWorld, 32, radius, col1.Lerp(col2, 1.0f - t));
+				}
+			}
+		}
 		
 		// Update the camera to contain all our boids.
 		_cam.SetMinMax(min, max);
