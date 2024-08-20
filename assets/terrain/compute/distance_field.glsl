@@ -12,6 +12,7 @@ layout(set = 3, binding = 0, std430) restrict buffer PlayerSpawns {
 
 layout(push_constant, std430) uniform Params {
 	float sdfDistMod;
+	float simulationMode;
 } params;
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
@@ -29,14 +30,22 @@ void main()
     float dist = distance(pos, uv);
 
 	// Fill out the spawn positions buffers.
-	if (dist > 25.0 && (uv.x % 5) == 0 && (uv.y % 5) == 0) {
-		if (uv.x < imageSize.x * 0.33 || uv.y < imageSize.y * 0.33 || uv.x > imageSize.x * 0.66 || uv.y > imageSize.y * 0.66) {
-			_enemySpawns.data[uv.x * imageSize.y + uv.y] = 1;
-		}
-		if (uv.x > imageSize.x * 0.45 && uv.y > imageSize.y * 0.45 && uv.x < imageSize.x * 0.55 && uv.y < imageSize.y * 0.55) {
-			_playerSpawns.data[uv.x * imageSize.y + uv.y] = 1;
+	if (params.simulationMode < 0.5) {
+		if (dist > 25.0 && (uv.x % 5) == 0 && (uv.y % 5) == 0) {
+			if (uv.x < imageSize.x * 0.33 || uv.y < imageSize.y * 0.33 || uv.x > imageSize.x * 0.66 || uv.y > imageSize.y * 0.66) {
+				_enemySpawns.data[uv.x * imageSize.y + uv.y] = 1;
+			}
+			if (uv.x > imageSize.x * 0.45 && uv.y > imageSize.y * 0.45 && uv.x < imageSize.x * 0.55 && uv.y < imageSize.y * 0.55) {
+				_playerSpawns.data[uv.x * imageSize.y + uv.y] = 1;
+			}
 		}
 	}
+	else {
+		if (dist > 25.0 && (uv.x % 5) == 0 && (uv.y % 5) == 0) {
+			_enemySpawns.data[uv.x * imageSize.y + uv.y] = 1;
+		}
+	}
+	
 
     dist = clamp(dist / params.sdfDistMod, 0.0, 1.0);
     imageStore(_output, uv, vec4(dist, dist, dist, 1.0));	

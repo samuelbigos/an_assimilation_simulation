@@ -30,9 +30,13 @@ layout(push_constant, std430) uniform Params {
 	float sdfDistMod;
 	float boidMaxSpeed;
 	float boidMaxForce;
+	float boidSeparationWeight;
 	float boidSeparationRadius;
+	float boidCohesionWeight;
 	float boidCohesionRadius;
+	float boidAlignmentWeight;
 	float boidAlignmentRadius;
+	float boidSdfAvoidWeight;
 	float boidSdfAvoidDistance;
 	float boidTeamInfluenceRadius;
 	float mousePressed;
@@ -158,6 +162,7 @@ void main() {
 	vec2 alignmentVelocity = vec2(0,0);
 
 	// Behaviours with other boids.
+	// TODO: This is horrible at higher boid counts, need to use spatial partitioning structure to optimise.
     for (int i = 0; i < params.numBoids; i++) {
         if (i == id) continue;
 
@@ -266,15 +271,19 @@ void main() {
 	float maxForce = params.boidMaxForce * mouseBoost;
 
 	// Accumulate the flocking forces.
-	totalForce += limit(separationForce, maxForce / 3.0);
-	totalForce += limit(cohesionForce, maxForce / 3.0);
-	totalForce += limit(alignmentForce, maxForce / 3.0);
+	float totalWeight = params.boidSeparationWeight + params.boidCohesionWeight + params.boidAlignmentWeight;
+	float separationWeight = params.boidSeparationWeight / totalWeight;
+	float cohesionWeight = params.boidCohesionWeight / totalWeight;
+	float alignmentWeight = params.boidAlignmentWeight / totalWeight;
+	totalForce += limit(separationForce, maxForce * separationWeight);
+	totalForce += limit(cohesionForce, maxForce * cohesionWeight);
+	totalForce += limit(alignmentForce, maxForce * alignmentWeight);
 
 	// Give a little force to maintain the max speed, to keep boids moving.
 	totalForce += steeringMaintainSpeed(boidVel) * 0.25;
 
 	// Avoid terrain.
-	totalForce += limit(avoidForce, maxForce);
+	totalForce += limit(avoidForce, maxForce) * params.boidSdfAvoidWeight;
 
 	// Apply separation last and give it priority.
 	// separationForce = limit(separationForce, maxForce / 1.5);
