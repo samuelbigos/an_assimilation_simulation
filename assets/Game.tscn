@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://vikkfjvfvdfv"]
+[gd_scene load_steps=12 format=3 uid="uid://vikkfjvfvdfv"]
 
 [ext_resource type="Script" path="res://src/game/Game.cs" id="1_2ms8f"]
 [ext_resource type="Script" path="res://src/game/GameCamera.cs" id="2_5ghvg"]
@@ -10,7 +10,10 @@
 
 [sub_resource type="Environment" id="Environment_cw83p"]
 background_mode = 1
-background_color = Color(0.964742, 0.964742, 0.964742, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_x5yjy"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_0oxxn"]
 size = Vector2(1, 1)
@@ -18,6 +21,9 @@ size = Vector2(1, 1)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_35xi0"]
 render_priority = 0
 shader = ExtResource("7_wult2")
+shader_parameter/_terrainCol1 = Color(0.230305, 0.0911082, 0.0219759, 1)
+shader_parameter/_terrainCol2 = Color(0.537255, 0.329412, 0.184314, 1)
+shader_parameter/_terrainCol3 = Color(0.92549, 0.866667, 0.729412, 1)
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1_2ms8f")
@@ -35,6 +41,7 @@ _zoomSpeed = 0.05
 
 [node name="DebugDraw" type="Node" parent="."]
 script = ExtResource("4_r3dle")
+_mat = SubResource("StandardMaterial3D_x5yjy")
 
 [node name="Terrain" type="Node3D" parent="." node_paths=PackedStringArray("_terrainMesh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
@@ -57,7 +64,7 @@ _boidDefaultRadius = 2.5
 _boidSeparationRadius = 10.0
 _boidAlignmentRadius = 10.0
 _boidSdfAvoidWeight = 2.0
-_boidSdfAvoidDistance = 25.0
+_boidSdfAvoidDistance = 15.0
 _boidTeamInfluenceRadius = 25.0
 _boidMouseInfluenceRadius = 66.0
 

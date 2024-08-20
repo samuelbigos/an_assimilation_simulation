@@ -5,6 +5,8 @@ using Array = Godot.Collections.Array;
 
 public partial class DebugDraw : Singleton<DebugDraw>
 {
+    [Export] private StandardMaterial3D _mat;
+    
     private static int v;
     private static int i;
     private static Vector3[] _vertList = new Vector3[1024*1024];
@@ -28,11 +30,7 @@ public partial class DebugDraw : Singleton<DebugDraw>
         if (_debugMesh == null)
         {
             _debugMesh = new MeshInstance3D();
-            StandardMaterial3D mat = new();
-            mat.VertexColorUseAsAlbedo = true;
-            mat.VertexColorIsSrgb = true;
-            mat.NoDepthTest = true;
-            _debugMesh.MaterialOverride = mat;
+            _debugMesh.MaterialOverride = _mat;
             AddChild(_debugMesh);
         }
         

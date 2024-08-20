@@ -14,6 +14,8 @@ public partial class Game : Singleton<Game>
 	public override void _Ready()
 	{
 		base._Ready();
+
+		Engine.MaxFps = 60;
 		
 		if (SimulationMode) Unpause();
 	}
